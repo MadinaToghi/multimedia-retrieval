@@ -216,3 +216,20 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Course data - do not upload large datasets
+data/raw/
+data/processed/
+
+# Generated outputs
+outputs/
+report/figures/
+
+# Python environment
+.venv/
+.env
+__pycache__/
+*.pyc
+
+# Jupyter
+.ipynb_checkpoints/
