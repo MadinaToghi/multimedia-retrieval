@@ -1,6 +1,7 @@
 import trimesh as tr
 import numpy as np
 import random
+import pandas as pd
 
 from pathlib import Path
 from vedo import Mesh, show
@@ -36,6 +37,17 @@ def show_mesh(mesh, path):
         new=False
     )
 
+def analyze(mesh, path):
+    # Face type moet nog
+    return {
+        "Class": path.parent.name,
+        "File": path.name,
+        "Vertices Count": len(mesh.vertices),
+        "Faces Count": len(mesh.faces),
+        "Bounds Min": mesh.bounds[0].tolist(),
+        "Bounds Max": mesh.bounds[1].tolist()
+    }
+
 # Step 2.5: Normalize the mesh
 def normalize_mesh(mesh):
    # Center using barycenter
@@ -62,11 +74,22 @@ def validate_normalization(mesh):
     print(f"Is centered: {np.allclose(barycenter, [0,0,0])}")
     print(f"Is normalized size: {np.isclose(max_extent, 1.0)}")
 
+results = []
+
 # For now sample_files, but all meshes should be normalized and validated before visualization (sample_files = obj_files) 
+for path in sample_files:
+    mesh = tr.load(path, force='mesh', process=False)
+    results.append(analyze(mesh, path))
+
+    # Create and print dataframe
+    df = pd.DataFrame(results)
+    print(df)
+    df.to_csv("mesh_statistics.csv", index=False)
+
+# View the meshes in an interactive viewer
 for path in sample_files:
     print(f"Displaying: {path.name}")
     mesh = tr.load(path, force='mesh', process=False)
-
-    mesh = normalize_mesh(mesh)
-    validate_normalization(mesh)
+    #mesh = normalize_mesh(mesh)
+    #validate_normalization(mesh)
     show_mesh(mesh, path)
