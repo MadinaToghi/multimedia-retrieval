@@ -2,6 +2,7 @@ import trimesh as tr
 import numpy as np
 import random
 import pandas as pd
+import matplotlib.pyplot as plt
 
 from pathlib import Path
 from vedo import Mesh, show
@@ -16,15 +17,16 @@ random.seed(43)
 # If there are only 10 (or less than 10) files in a category, all files are taken
 # Sample files are stored in sample_files list without parent folder name
 files_by_category = {}
+
 for path in obj_files:
     files_by_category.setdefault(path.parent.name, []).append(path)
 
 sample_files = []
+
 for category, files in files_by_category.items():
     sample_files.extend(random.sample(files, min(10, len(files))))
 
 def show_mesh(mesh, path):
-    
     # Convert to Vedo for visualization
     vedo_mesh = Mesh([mesh.vertices, mesh.faces])
     # Makes sure objects are shaded
@@ -47,13 +49,40 @@ def show_mesh(mesh, path):
         new=False
     )
 
+# Trimesh makes all shapes into triangles, so we need to read the obj files directly to determine if they are triangles, quads, or mixed.
+def get_face_types(obj_path):
+    face_vertex_counts = set()
+    face_count = 0
+
+    with open(obj_path, 'r') as f:
+        for line in f:
+            if line.startswith('f '):
+                face_count += 1
+                n = len(line.strip().split()[1:])
+                face_vertex_counts.add(n)
+                # once we've seen both 3 and 4, no need to keep scanning
+                if len(face_vertex_counts) > 1:
+                    break
+    return face_count, face_vertex_counts
+
+# Check if the mesh is made of triangles, quads, or mixed 
+# Technically, face vertex counts can be more than 4, like hexagons etc, however, we only check for triangles quads or mixed
+def classify(face_vertex_counts):
+    if face_vertex_counts == {3}:
+        return "triangles"
+    elif face_vertex_counts == {4}:
+        return "quads"
+    else:
+        return "mixed"
+
 def analyze(mesh, path):
-    # Face type moet nog
+    original_face_count, face_types = get_face_types(path)
     return {
         "Class": path.parent.name,
         "File": path.name,
         "Vertices Count": len(mesh.vertices),
-        "Faces Count": len(mesh.faces),
+        "Faces Count": original_face_count,
+        "Face Type": classify(face_types),
         "Bounds Min": mesh.bounds[0].tolist(),
         "Bounds Max": mesh.bounds[1].tolist()
     }
@@ -84,56 +113,76 @@ def validate_normalization(mesh):
     print(f"Is centered: {np.allclose(barycenter, [0,0,0])}")
     print(f"Is normalized size: {np.isclose(max_extent, 1.0)}")
 
-results = []
+def plot_statistics(df):
+    plt.figure()
+    df["Vertices Count"].hist()
+    plt.title("Vertices Count Distribution")
+    plt.xlabel("Number of vertices")
+    plt.ylabel("Number of shapes")
+    plt.show()
 
-# For now sample_files, but all meshes should be normalized and validated before visualization (sample_files = obj_files) 
-"""
+    plt.figure()
+    df["Faces Count"].hist()
+    plt.title("Faces Count Distribution")
+    plt.xlabel("Number of faces")
+    plt.ylabel("Number of shapes")
+    plt.show()
+
+    plt.figure()
+    df["Class"].value_counts().plot(kind='bar')
+    plt.title("Shapes per class")
+    plt.xlabel("Class")
+    plt.ylabel("Number of shapes")
+    plt.show()
+
+# Function to find representative shapes based on vertices and faces count
+def find_representative_shapes(df):
+    # Find mean vertices and faces count
+    mean_vertices = df["Vertices Count"].mean()
+    mean_faces = df["Faces Count"].mean()
+
+    # Find shape closest to the average
+    df["Distance From Average"] = (abs(df["Vertices Count"] - mean_vertices) / mean_vertices
+                                   + abs(df["Faces Count"] - mean_faces) / mean_faces)
+
+    average_shape = df.loc[df["Distance From Average"].idxmin()]
+
+    # Find some extreme shapes
+    fewest_vertices = df.loc[df["Vertices Count"].idxmin()]
+    most_vertices = df.loc[df["Vertices Count"].idxmax()]
+
+    fewest_faces = df.loc[df["Faces Count"].idxmin()]
+    most_faces = df.loc[df["Faces Count"].idxmax()]
+
+    return average_shape, fewest_vertices, most_vertices, fewest_faces, most_faces
+
+# Step 2.1 analysis
+results = []
+ 
 for path in sample_files:
     mesh = tr.load(path, force='mesh', process=False)
     results.append(analyze(mesh, path))
 
-    # Create and print dataframe
-    df = pd.DataFrame(results)
-    print(df)
-    df.to_csv("mesh_statistics.csv", index=False)
-"""
-# View the meshes in an interactive viewer
-"""
-for path in sample_files:
-    print(f"Displaying: {path.name}")
+# Create and print dataframe
+df = pd.DataFrame(results)
+print(df)
+df.to_csv("mesh_statistics.csv", index=False)
+
+# Step 2.2
+print("Mean Vertices Count:", df["Vertices Count"].mean())
+print("Mean Faces Count:", df["Faces Count"].mean())
+
+plot_statistics(df)
+
+average_shape, fewest_vertices, most_vertices, fewest_faces, most_faces = find_representative_shapes(df)
+
+shapes_to_view = [("Average-like shape", average_shape), ("Fewest vertices", fewest_vertices), ("Most vertices", most_vertices)]
+
+for label,row in shapes_to_view:
+    path = data_path / row["Class"] / row["File"]
+
+    print(
+        f"{label}: {path.name} |" f"Vertices: {row['Vertices Count']} |" f"Faces: {row['Faces Count']}")
+
     mesh = tr.load(path, force='mesh', process=False)
-    #mesh = normalize_mesh(mesh)
-    #validate_normalization(mesh)
     show_mesh(mesh, path)
-"""
-
-# Trimesh makes all shapes into triangles, so we need to read the obj files directly to determine if they are triangles, quads, or mixed.
-def get_face_types(obj_path):
-    face_vertex_counts = set()
-    with open(obj_path, 'r') as f:
-        for line in f:
-            if line.startswith('f '):
-                n = len(line.strip().split()[1:])
-                face_vertex_counts.add(n)
-                # once we've seen both 3 and 4, no need to keep scanning
-                if len(face_vertex_counts) > 1:
-                    break
-    return face_vertex_counts
-# Check if the mesh is made of triangles, quads, or mixed 
-# Technically, face vertex counts can be more than 4, like hexagons etc, however, we only check for triangles quads or mixed
-def classify(face_vertex_counts):
-    if face_vertex_counts == {3}:
-        return "triangles"
-    elif face_vertex_counts == {4}:
-        return "quads"
-    else:
-        return "mixed"
-
-# Print results for each file in sample_files
-results = {}
-for path in sample_files:
-    counts = get_face_types(path)
-    results[path.name] = classify(counts)
-
-for name, label in results.items():
-    print(f"{name}: {label}")
