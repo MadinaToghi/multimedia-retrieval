@@ -10,8 +10,18 @@ data_path = Path("../ShapeDatabase_INFOMR")
 
 obj_files = list(data_path.rglob("*.obj"))
 
-random.seed(42)
-sample_files = random.sample(obj_files, min(10, len(obj_files)))
+random.seed(43)
+# Group files by category (parent folder name) and sample 10 files from each category (Disproportionate stratified sampling)
+# Parent folder name is taken per file, from each parent folder 10 random files are taken
+# If there are only 10 (or less than 10) files in a category, all files are taken
+# Sample files are stored in sample_files list without parent folder name
+files_by_category = {}
+for path in obj_files:
+    files_by_category.setdefault(path.parent.name, []).append(path)
+
+sample_files = []
+for category, files in files_by_category.items():
+    sample_files.extend(random.sample(files, min(10, len(files))))
 
 def show_mesh(mesh, path):
     
@@ -77,6 +87,7 @@ def validate_normalization(mesh):
 results = []
 
 # For now sample_files, but all meshes should be normalized and validated before visualization (sample_files = obj_files) 
+"""
 for path in sample_files:
     mesh = tr.load(path, force='mesh', process=False)
     results.append(analyze(mesh, path))
@@ -85,11 +96,44 @@ for path in sample_files:
     df = pd.DataFrame(results)
     print(df)
     df.to_csv("mesh_statistics.csv", index=False)
-
+"""
 # View the meshes in an interactive viewer
+"""
 for path in sample_files:
     print(f"Displaying: {path.name}")
     mesh = tr.load(path, force='mesh', process=False)
     #mesh = normalize_mesh(mesh)
     #validate_normalization(mesh)
     show_mesh(mesh, path)
+"""
+
+# Trimesh makes all shapes into triangles, so we need to read the obj files directly to determine if they are triangles, quads, or mixed.
+def get_face_types(obj_path):
+    face_vertex_counts = set()
+    with open(obj_path, 'r') as f:
+        for line in f:
+            if line.startswith('f '):
+                n = len(line.strip().split()[1:])
+                face_vertex_counts.add(n)
+                # once we've seen both 3 and 4, no need to keep scanning
+                if len(face_vertex_counts) > 1:
+                    break
+    return face_vertex_counts
+# Check if the mesh is made of triangles, quads, or mixed 
+# Technically, face vertex counts can be more than 4, like hexagons etc, however, we only check for triangles quads or mixed
+def classify(face_vertex_counts):
+    if face_vertex_counts == {3}:
+        return "triangles"
+    elif face_vertex_counts == {4}:
+        return "quads"
+    else:
+        return "mixed"
+
+# Print results for each file in sample_files
+results = {}
+for path in sample_files:
+    counts = get_face_types(path)
+    results[path.name] = classify(counts)
+
+for name, label in results.items():
+    print(f"{name}: {label}")
