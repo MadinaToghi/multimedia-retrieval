@@ -176,13 +176,25 @@ plot_statistics(df)
 
 average_shape, fewest_vertices, most_vertices, fewest_faces, most_faces = find_representative_shapes(df)
 
+representative_shapes = [
+    ("Average-like shape", average_shape),
+    ("Fewest vertices", fewest_vertices),
+    ("Most vertices", most_vertices),
+    ("Fewest faces", fewest_faces),
+    ("Most faces", most_faces),
+]
+
+for label, row in representative_shapes:
+    print(
+        f"{label}: {row['File']} | "
+        f"Vertices: {row['Vertices Count']} | "
+        f"Faces: {row['Faces Count']}"
+    )
+
 shapes_to_view = [("Average-like shape", average_shape), ("Fewest vertices", fewest_vertices), ("Most vertices", most_vertices)]
 
 for label,row in shapes_to_view:
     path = data_path / row["Class"] / row["File"]
-
-    print(
-        f"{label}: {path.name} |" f"Vertices: {row['Vertices Count']} |" f"Faces: {row['Faces Count']}")
 
     mesh = tr.load(path, force='mesh', process=False)
     show_mesh(mesh, path)
