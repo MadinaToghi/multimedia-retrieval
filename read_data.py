@@ -46,7 +46,7 @@ def show_mesh(mesh, path):
         viewup="z", 
         interactive=True,
         # True = Viewer will open in a new window each time. Set to False to reuse the same window.
-        new=False
+        new=True
     )
 
 # Trimesh makes all shapes into triangles, so we need to read the obj files directly to determine if they are triangles, quads, or mixed.
@@ -170,46 +170,6 @@ df = pd.DataFrame(results)
 print(df)
 df.to_csv("mesh_statistics.csv", index=False)
 
-# Find the outliers in the dataset based on vertices and faces count
-def find_outliers(df, column):
-    Q1 = df[column].quantile(0.25)
-    Q3 = df[column].quantile(0.75)
-
-    IQR = Q3 - Q1
-
-    lower_bound = Q1 - 1.5 * IQR
-    upper_bound = Q3 + 1.5 * IQR
-
-    outliers = df[(df[column] < lower_bound) | (df[column] > upper_bound)]
-
-    return outliers
-
-vertex_outliers = find_outliers(df, "Vertices Count")
-face_outliers = find_outliers(df, "Faces Count")
-
-print("Vertex outliers:")
-print(
-    vertex_outliers[
-        ["Class", "File", "Vertices Count", "Faces Count"]
-    ]
-)
-
-print("Face outliers:")
-print(
-    face_outliers[
-        ["Class", "File", "Vertices Count", "Faces Count"]
-    ]
-)
-
-# Lowest-resolution mesh
-low_detail = df.loc[df["Vertices Count"].idxmin()]
-
-# Highest-resolution mesh
-high_detail = df.loc[df["Vertices Count"].idxmax()]
-
-# Highest face-count mesh
-high_faces = df.loc[df["Faces Count"].idxmax()]
-
 # Step 2.2
 print("Mean Vertices Count:", df["Vertices Count"].mean())
 print("Mean Faces Count:", df["Faces Count"].mean())
@@ -226,9 +186,7 @@ representative_shapes = [
     ("Most faces", most_faces),
 ]
 
-shapes_to_view = [("Average-like shape", average_shape), ("Fewest vertices", fewest_vertices), ("Most vertices", most_vertices), ("Low-detail outlier", low_detail), ("High-detail outlier", high_detail), ("High face-count outlier", high_faces)]
-
-for label, row in shapes_to_view:
+for label, row in representative_shapes:
     print(
         f"{label}: {row['File']} | "
         f"Vertices: {row['Vertices Count']} | "
@@ -236,7 +194,7 @@ for label, row in shapes_to_view:
     )
 
 
-for label,row in shapes_to_view:
+for label,row in representative_shapes:
     path = data_path / row["Class"] / row["File"]
 
     mesh = tr.load(path, force='mesh', process=False)
