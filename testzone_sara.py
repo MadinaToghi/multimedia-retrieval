@@ -41,12 +41,35 @@ def show_mesh(mesh, path):
         new=True
     )
 
+def mesh_alignment(mesh):
+    #Step 3.1.1: align
+    pc1, pc2, pc3 = mesh.principal_inertia_vectors
+
+    print(mesh)
+    x_updated = np.dot(mesh.vertices, pc1)
+    y_updated = np.dot(mesh.vertices, pc2)
+    z_updated = np.dot(mesh.vertices, np.cross(pc1, pc2))
+
+    new_vertices = np.array([x_updated, y_updated, z_updated]).T
+    print(new_vertices.shape)
+
+
+    print(mesh.faces.shape)
+    print(x_updated.shape)
+    new_mesh = tr.Trimesh(new_vertices, mesh.faces)
+    
+    return new_mesh
 
 
 def normalize_mesh(mesh):
    # Center using barycenter
+    #barycenter= mesh.center_mass
     barycenter = mesh.vertices.mean(axis=0)
+    
     mesh.apply_translation(-barycenter)
+
+    # Mesh alignment (Step 3.1)
+    mesh = mesh_alignment(mesh)
        
    # Normalize size to largest dimension = 1
     max_extent = np.max(mesh.extents)
@@ -76,18 +99,34 @@ for category, files in files_by_category.items():
 
 
 
-path = sample_files[70]
+path = sample_files[200]
 
-mesh = tr.load(path, force='mesh', process=False)
+mesh = tr.load_mesh(path, force='mesh', process=False)
 
+
+
+
+
+#"""
 print("mesh")
 validate_normalization(mesh)
-show_mesh(mesh, path)
+
 
 
 normal_mesh = normalize_mesh(mesh)
 print("normalised mesh")
 validate_normalization(normal_mesh)
 show_mesh(normal_mesh, path)
+#"""
+
+"""
+Notes
+
+eigenvectors = mesh.principal_inertia_vectors
+
+xi updated = (pi - c) ⋅ e1
+yi updated = (pi - c) ⋅ e2
+zi updated = (pi - c) ⋅ (e1 x e2)
 
 
+"""
