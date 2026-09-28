@@ -156,6 +156,8 @@ def find_representative_shapes(df):
 
     return average_shape, fewest_vertices, most_vertices, fewest_faces, most_faces
 
+
+
 # Step 2.1 analysis
 results = []
  
@@ -167,6 +169,46 @@ for path in sample_files:
 df = pd.DataFrame(results)
 print(df)
 df.to_csv("mesh_statistics.csv", index=False)
+
+# Find the outliers in the dataset based on vertices and faces count
+def find_outliers(df, column):
+    Q1 = df[column].quantile(0.25)
+    Q3 = df[column].quantile(0.75)
+
+    IQR = Q3 - Q1
+
+    lower_bound = Q1 - 1.5 * IQR
+    upper_bound = Q3 + 1.5 * IQR
+
+    outliers = df[(df[column] < lower_bound) | (df[column] > upper_bound)]
+
+    return outliers
+
+vertex_outliers = find_outliers(df, "Vertices Count")
+face_outliers = find_outliers(df, "Faces Count")
+
+print("Vertex outliers:")
+print(
+    vertex_outliers[
+        ["Class", "File", "Vertices Count", "Faces Count"]
+    ]
+)
+
+print("Face outliers:")
+print(
+    face_outliers[
+        ["Class", "File", "Vertices Count", "Faces Count"]
+    ]
+)
+
+# Lowest-resolution mesh
+low_detail = df.loc[df["Vertices Count"].idxmin()]
+
+# Highest-resolution mesh
+high_detail = df.loc[df["Vertices Count"].idxmax()]
+
+# Highest face-count mesh
+high_faces = df.loc[df["Faces Count"].idxmax()]
 
 # Step 2.2
 print("Mean Vertices Count:", df["Vertices Count"].mean())
@@ -184,14 +226,15 @@ representative_shapes = [
     ("Most faces", most_faces),
 ]
 
-for label, row in representative_shapes:
+shapes_to_view = [("Average-like shape", average_shape), ("Fewest vertices", fewest_vertices), ("Most vertices", most_vertices), ("Low-detail outlier", low_detail), ("High-detail outlier", high_detail), ("High face-count outlier", high_faces)]
+
+for label, row in shapes_to_view:
     print(
         f"{label}: {row['File']} | "
         f"Vertices: {row['Vertices Count']} | "
         f"Faces: {row['Faces Count']}"
     )
 
-shapes_to_view = [("Average-like shape", average_shape), ("Fewest vertices", fewest_vertices), ("Most vertices", most_vertices)]
 
 for label,row in shapes_to_view:
     path = data_path / row["Class"] / row["File"]
