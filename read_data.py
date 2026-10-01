@@ -3,6 +3,7 @@ import numpy as np
 import random
 import pandas as pd
 import matplotlib.pyplot as plt
+import csv
 
 from pathlib import Path
 from vedo import Mesh, show
@@ -10,7 +11,7 @@ from tqdm import tqdm
 
 MIN_VERTICES = 5000
 MAX_VERTICES = 10000
-MAX_ITERATIONS = 15
+MAX_ITERATIONS = 20
 
 data_path = Path("../ShapeDatabase_INFOMR")
 
@@ -415,7 +416,7 @@ for label,row in representative_shapes:
 """
 
 output_root = Path("/Users/stefvanderwilt/Desktop/MMR/ShapeDatabase_normalized")
-#normalize_sample_files(sample_files, data_path, output_root)
+normalize_sample_files(sample_files, data_path, output_root)
 
 shown_categories = set()
 for sample_path in sample_files:
