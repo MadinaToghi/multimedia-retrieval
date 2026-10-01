@@ -6,6 +6,11 @@ import matplotlib.pyplot as plt
 
 from pathlib import Path
 from vedo import Mesh, show
+from tqdm import tqdm
+
+MIN_VERTICES = 5000
+MAX_VERTICES = 10000
+MAX_ITERATIONS = 15
 
 data_path = Path("../ShapeDatabase_INFOMR")
 
@@ -101,6 +106,213 @@ def normalize_mesh(mesh):
 
     return mesh
 
+def repair_mesh(mesh):
+    """Fill holes and merge vertices; return the mesh, repair flag, and removed-component count."""
+    original_mesh = mesh
+    working_mesh = None
+    was_repaired = False
+    components_removed = 0
+
+    try:
+        working_mesh = mesh.copy()
+        if not working_mesh.is_watertight:
+            vertices_before = len(working_mesh.vertices)
+            faces_before = len(working_mesh.faces)
+            holes_filled = working_mesh.fill_holes()
+            working_mesh.merge_vertices()
+            was_repaired = bool(holes_filled) or (
+                len(working_mesh.vertices) != vertices_before
+                or len(working_mesh.faces) != faces_before
+            )
+
+        return working_mesh, was_repaired, components_removed
+    except Exception as error:
+        original_mesh.metadata.setdefault("_normalization_errors", []).append(str(error))
+        return original_mesh, False, 0
+
+
+def refine_to_range(mesh, min_v, max_v, target_v, max_iterations):
+    """Subdivide a mesh toward the vertex range; return the best mesh, iterations, and convergence flag."""
+    best_mesh = mesh
+    iterations_used = 0
+    low_edge = None
+    high_edge = None
+
+    try:
+        best_distance = abs(len(mesh.vertices) - target_v)
+        if min_v <= len(mesh.vertices) <= max_v:
+            return best_mesh, iterations_used, True
+
+        original_mesh = mesh.copy()
+        max_edge = float(original_mesh.edges_unique_length.mean())
+        if not np.isfinite(max_edge) or max_edge <= 0:
+            raise ValueError("Mesh has no positive finite mean edge length")
+
+        for iteration in range(max_iterations):
+            candidate = original_mesh.copy().subdivide_to_size(max_edge=max_edge)
+            candidate_count = len(candidate.vertices)
+            iterations_used = iteration + 1
+            distance = abs(candidate_count - target_v)
+            if distance < best_distance:
+                best_mesh = candidate
+                best_distance = distance
+
+            if min_v <= candidate_count <= max_v:
+                return candidate, iterations_used, True
+
+            if candidate_count < target_v:
+                high_edge = max_edge
+            else:
+                low_edge = max_edge
+
+            if low_edge is not None and high_edge is not None:
+                max_edge = (low_edge + high_edge) / 2.0
+            else:
+                max_edge *= np.sqrt(candidate_count / target_v)
+                if not np.isfinite(max_edge) or max_edge <= 0:
+                    break
+    except Exception as error:
+        best_mesh.metadata.setdefault("_normalization_errors", []).append(str(error))
+
+    return best_mesh, iterations_used, min_v <= len(best_mesh.vertices) <= max_v
+
+
+def decimate_to_range(mesh, min_v, max_v, target_v, max_iterations):
+    """Simplify a mesh toward the vertex range; return the best mesh, iterations, and convergence flag."""
+    best_mesh = mesh
+    iterations_used = 0
+
+    try:
+        best_distance = abs(len(mesh.vertices) - target_v)
+        if min_v <= len(mesh.vertices) <= max_v:
+            return best_mesh, iterations_used, True
+
+        original_mesh = mesh.copy()
+        original_vertex_count = len(original_mesh.vertices)
+        original_face_count = len(original_mesh.faces)
+        if original_vertex_count <= 0 or original_face_count <= 0:
+            raise ValueError("Mesh has no vertices or faces to simplify")
+
+        face_count = max(1, round(target_v * original_face_count / original_vertex_count))
+        for iteration in range(max_iterations):
+            candidate = original_mesh.copy().simplify_quadric_decimation(face_count=face_count)
+            candidate_count = len(candidate.vertices)
+            iterations_used = iteration + 1
+            distance = abs(candidate_count - target_v)
+            if distance < best_distance:
+                best_mesh = candidate
+                best_distance = distance
+
+            if min_v <= candidate_count <= max_v:
+                return candidate, iterations_used, True
+
+            next_face_count = max(1, round(face_count * target_v / max(candidate_count, 1)))
+            if next_face_count == face_count:
+                break
+            face_count = next_face_count
+    except Exception as error:
+        best_mesh.metadata.setdefault("_normalization_errors", []).append(str(error))
+
+    return best_mesh, iterations_used, min_v <= len(best_mesh.vertices) <= max_v
+
+
+def process_single_mesh(path, data_path, output_root):
+    """Normalize, repair, range-adjust, and export one mesh; return its CSV row as a dictionary."""
+    relative_path = Path(path).name
+    row = {
+        "filename": relative_path,
+        "original_vertex_count": "",
+        "post_normalize_vertex_count": "",
+        "was_repaired": False,
+        "components_removed": 0,
+        "final_vertex_count": "",
+        "method_used": "unchanged",
+        "iterations_used": 0,
+        "converged": False,
+        "status": "ERROR",
+        "error": "",
+    }
+
+    try:
+        path = Path(path)
+        data_path = Path(data_path)
+        output_root = Path(output_root)
+        relative_path = path.resolve().relative_to(data_path.resolve())
+        row["filename"] = str(relative_path)
+
+        mesh = tr.load(path, force="mesh", process=False)
+        row["original_vertex_count"] = len(mesh.vertices)
+        mesh = normalize_mesh(mesh)
+        row["post_normalize_vertex_count"] = len(mesh.vertices)
+
+        mesh, was_repaired, components_removed = repair_mesh(mesh)
+        row["was_repaired"] = was_repaired
+        row["components_removed"] = components_removed
+        errors = list(mesh.metadata.pop("_normalization_errors", []))
+
+        vertex_count = len(mesh.vertices)
+        if MIN_VERTICES <= vertex_count <= MAX_VERTICES:
+            method_used = "unchanged"
+        elif vertex_count < MIN_VERTICES:
+            mesh, iterations_used, _ = refine_to_range(
+                mesh, MIN_VERTICES, MAX_VERTICES,
+                (MIN_VERTICES + MAX_VERTICES) // 2, MAX_ITERATIONS,
+            )
+            method_used = "refined"
+            errors.extend(mesh.metadata.pop("_normalization_errors", []))
+            if len(mesh.vertices) > MAX_VERTICES:
+                mesh, correction_iterations, _ = decimate_to_range(
+                    mesh, MIN_VERTICES, MAX_VERTICES,
+                    MAX_VERTICES, MAX_ITERATIONS,
+                )
+                iterations_used += correction_iterations
+                method_used = "refined+corrected"
+                errors.extend(mesh.metadata.pop("_normalization_errors", []))
+        else:
+            mesh, iterations_used, _ = decimate_to_range(
+                mesh, MIN_VERTICES, MAX_VERTICES,
+                MAX_VERTICES, MAX_ITERATIONS,
+            )
+            method_used = "simplified"
+            errors.extend(mesh.metadata.pop("_normalization_errors", []))
+
+        output_path = output_root / relative_path.with_suffix(".obj")
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        mesh.export(output_path, file_type="obj")
+
+        final_vertex_count = len(mesh.vertices)
+        row.update({
+            "final_vertex_count": final_vertex_count,
+            "method_used": method_used,
+            "iterations_used": iterations_used if method_used != "unchanged" else 0,
+            "converged": MIN_VERTICES <= final_vertex_count <= MAX_VERTICES,
+            "status": "OK",
+            "error": "; ".join(errors),
+        })
+    except Exception as error:
+        row["error"] = str(error)
+
+    return row
+
+
+def normalize_sample_files(files, data_path, output_root):
+    """Process a batch of meshes and write each result row to normalization_log.csv."""
+    output_root = Path(output_root)
+    output_root.mkdir(parents=True, exist_ok=True)
+    columns = [
+        "filename", "original_vertex_count", "post_normalize_vertex_count",
+        "was_repaired", "components_removed", "final_vertex_count",
+        "method_used", "iterations_used", "converged", "status", "error",
+    ]
+
+    with (output_root / "normalization_log.csv").open("w", newline="", encoding="utf-8") as log_file:
+        writer = csv.DictWriter(log_file, fieldnames=columns)
+        writer.writeheader()
+        for path in tqdm(files):
+            row = process_single_mesh(path, data_path, output_root)
+            writer.writerow(row)
+            log_file.flush()
+
 # Step 2.5: Validate the normalization
 def validate_normalization(mesh):
     # Check if the mesh is centered at the origin
@@ -159,6 +371,10 @@ def find_representative_shapes(df):
 
 
 # Step 2.1 analysis
+<<<<<<< Updated upstream
+=======
+"""
+>>>>>>> Stashed changes
 results = []
  
 for path in sample_files:
@@ -199,3 +415,29 @@ for label,row in representative_shapes:
 
     mesh = tr.load(path, force='mesh', process=False)
     show_mesh(mesh, path)
+"""
+
+output_root = Path("/Users/stefvanderwilt/Desktop/MMR/ShapeDatabase_normalized")
+normalize_sample_files(sample_files, data_path, output_root)
+
+shown_categories = set()
+for sample_path in sample_files:
+    category = sample_path.parent.name
+    if category in shown_categories:
+        continue
+
+    normalized_path = output_root / sample_path.relative_to(data_path).with_suffix(".obj")
+    original_mesh = tr.load(sample_path, force="mesh", process=False)
+    normalized_mesh = tr.load(normalized_path, force="mesh", process=False)
+    print(
+        f"{category}/{sample_path.name} | "
+        f"original_vertices={len(original_mesh.vertices)}, "
+        f"normalized_vertices={len(normalized_mesh.vertices)}"
+    )
+    print(f"Showing original | {category}/{sample_path.name}")
+    show_mesh(original_mesh, sample_path.with_name(f"{sample_path.stem}__original.obj"))
+    print(f"Showing normalized | {category}/{normalized_path.name}")
+    show_mesh(normalized_mesh, normalized_path.with_name(f"{normalized_path.stem}__normalized.obj"))
+    shown_categories.add(category)
+    if len(shown_categories) == 10:
+        break
