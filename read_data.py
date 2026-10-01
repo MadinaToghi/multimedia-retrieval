@@ -371,10 +371,7 @@ def find_representative_shapes(df):
 
 
 # Step 2.1 analysis
-<<<<<<< Updated upstream
-=======
 """
->>>>>>> Stashed changes
 results = []
  
 for path in sample_files:
@@ -418,7 +415,7 @@ for label,row in representative_shapes:
 """
 
 output_root = Path("/Users/stefvanderwilt/Desktop/MMR/ShapeDatabase_normalized")
-normalize_sample_files(sample_files, data_path, output_root)
+#normalize_sample_files(sample_files, data_path, output_root)
 
 shown_categories = set()
 for sample_path in sample_files:
