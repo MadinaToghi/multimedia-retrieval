@@ -415,7 +415,7 @@ for label,row in representative_shapes:
     show_mesh(mesh, path)
 """
 
-output_root = Path("/Users/stefvanderwilt/Desktop/MMR/ShapeDatabase_normalized")
+output_root = Path("../ShapeDatabase_normalized")
 normalize_sample_files(sample_files, data_path, output_root)
 
 shown_categories = set()

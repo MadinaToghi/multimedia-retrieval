@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 from vedo import Mesh, show
 
-data_path = Path("../ShapeDatabase_INFOMR")
+data_path = Path("../ShapeDatabase_normalized")
 
 obj_files = list(data_path.rglob("*.obj"))
 
@@ -96,7 +96,7 @@ for category, files in files_by_category.items():
 
 
 
-path = sample_files[260]
+path = sample_files[29]
 
 mesh = tr.load_mesh(path, force='mesh', process=False)
 
