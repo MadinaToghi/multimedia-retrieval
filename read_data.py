@@ -46,7 +46,7 @@ def show_mesh(mesh, path):
         viewup="z", 
         interactive=True,
         # True = Viewer will open in a new window each time. Set to False to reuse the same window.
-        new=False
+        new=True
     )
 
 # Trimesh makes all shapes into triangles, so we need to read the obj files directly to determine if they are triangles, quads, or mixed.
@@ -156,6 +156,8 @@ def find_representative_shapes(df):
 
     return average_shape, fewest_vertices, most_vertices, fewest_faces, most_faces
 
+
+
 # Step 2.1 analysis
 results = []
  
@@ -191,9 +193,8 @@ for label, row in representative_shapes:
         f"Faces: {row['Faces Count']}"
     )
 
-shapes_to_view = [("Average-like shape", average_shape), ("Fewest vertices", fewest_vertices), ("Most vertices", most_vertices)]
 
-for label,row in shapes_to_view:
+for label,row in representative_shapes:
     path = data_path / row["Class"] / row["File"]
 
     mesh = tr.load(path, force='mesh', process=False)
