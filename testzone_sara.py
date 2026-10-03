@@ -41,9 +41,32 @@ def show_mesh(mesh, path):
         new=True
     )
 
+def mesh_orientation(x, y, z):
+    x_orient = np.sign(sum(np.sign(item) * np.square(item) for item in x))
+    y_orient = np.sign(sum(np.sign(item) * np.square(item) for item in y))
+    z_orient = np.sign(sum(np.sign(item) * np.square(item) for item in z))
+
+    return np.diag([x_orient, y_orient, z_orient, 1.0])
+
 def mesh_alignment(mesh):
     #Step 3.1.1: align
-    pc1, pc2, pc3 = mesh.principal_inertia_vectors
+
+    A_cov = np.cov(np.array(mesh.vertices).T)  # 3x3 matrix
+
+    # computes the eigenvalues and eigenvectors for the covariance matrix. 
+    eigenvalues, eigenvectors = np.linalg.eig(A_cov)
+
+    print("==> eigenvalues for (x, y, z)")
+    print(eigenvalues)
+    print("\n==> eigenvectors")
+    print(eigenvectors.real)
+
+    print("\n==> principal_inertia_vectors")
+    print(mesh.principal_inertia_vectors)
+
+    pc1 = eigenvectors.real[0]
+    pc2 = eigenvectors.real[1]
+    #pc1, pc2, pc3 = mesh.principal_inertia_vectors
 
     x_updated = np.dot(mesh.vertices, pc1)
     y_updated = np.dot(mesh.vertices, pc2)
@@ -53,8 +76,10 @@ def mesh_alignment(mesh):
 
     new_mesh = tr.Trimesh(new_vertices, mesh.faces)
 
+    rotation = mesh_orientation(x_updated, y_updated, z_updated)
+    new_mesh.apply_transform(rotation)
 
-    print(mesh.principal_inertia_vectors)
+    #print(mesh.principal_inertia_vectors)
     return new_mesh
 
 
@@ -96,17 +121,15 @@ for category, files in files_by_category.items():
 
 
 
-path = sample_files[29]
+path = sample_files[580]
 
 mesh = tr.load_mesh(path, force='mesh', process=False)
 
 
 
 
-
-#"""
-print("mesh")
-validate_normalization(mesh)
+#print("mesh")
+#validate_normalization(mesh)
 
 
 
