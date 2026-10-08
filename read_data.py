@@ -4,14 +4,13 @@ import random
 import pandas as pd
 import matplotlib.pyplot as plt
 import csv
-
 from pathlib import Path
 from vedo import Mesh, show
 from tqdm import tqdm
 
 MIN_VERTICES = 5000
 MAX_VERTICES = 10000
-MAX_ITERATIONS = 20
+MAX_ITERATIONS = 15
 
 data_path = Path("../ShapeDatabase_INFOMR")
 
@@ -348,6 +347,81 @@ def plot_statistics(df):
     plt.ylabel("Number of shapes")
     plt.show()
 
+
+def plot_normalization_results(log_path):
+    """Display vertex-count, method-count, and before/after plots from the batch CSV."""
+    results = pd.read_csv(log_path)
+    successful = results[results["status"] == "OK"].copy()
+    for column in ("post_normalize_vertex_count", "final_vertex_count"):
+        successful[column] = pd.to_numeric(successful[column], errors="coerce")
+    successful = successful.dropna(subset=["post_normalize_vertex_count", "final_vertex_count"])
+
+    maximum_vertices = max(
+        MAX_VERTICES,
+        int(np.ceil(successful["final_vertex_count"].max() / 500) * 500),
+    )
+    bins = np.arange(0, maximum_vertices + 501, 500)
+    figure, axis = plt.subplots()
+    axis.hist(successful["final_vertex_count"], bins=bins, color="steelblue", edgecolor="white")
+    axis.axvline(MIN_VERTICES, color="darkorange", linestyle="--", label=f"Minimum ({MIN_VERTICES:,})")
+    axis.axvline(MAX_VERTICES, color="firebrick", linestyle="--", label=f"Maximum ({MAX_VERTICES:,})")
+    axis.set(title="Final Vertex Counts", xlabel="Vertex count", ylabel="Number of OBJ files")
+    axis.legend()
+    figure.tight_layout()
+
+    method_order = ["refined", "simplified", "unchanged"]
+    method_labels = ["Refined", "Decimated", "Unchanged"]
+    method_counts = successful["method_used"].value_counts()
+    figure, axis = plt.subplots()
+    axis.bar(method_labels, [method_counts.get(method, 0) for method in method_order], color=[
+        "seagreen", "indianred", "slategray",
+    ])
+    axis.set(title="Objects by Processing Method", ylabel="Number of OBJ files")
+    axis.tick_params(axis="x", rotation=15)
+    figure.tight_layout()
+
+    figure, axis = plt.subplots()
+    method_styles = {
+        "refined": ("seagreen", "Refined"),
+        "refined+corrected": ("mediumseagreen", "Refined + corrected"),
+        "simplified": ("indianred", "Decimated"),
+    }
+    changed = successful[successful["method_used"].isin(method_styles)]
+    for method, (color, label) in method_styles.items():
+        group = changed[changed["method_used"] == method]
+        if not group.empty:
+            axis.scatter(
+                group["post_normalize_vertex_count"],
+                group["final_vertex_count"],
+                s=24,
+                alpha=0.65,
+                color=color,
+                label=label,
+            )
+
+    plot_minimum = max(1, int(min(
+        changed["post_normalize_vertex_count"].min(),
+        changed["final_vertex_count"].min(),
+    )))
+    plot_maximum = int(max(
+        changed["post_normalize_vertex_count"].max(),
+        changed["final_vertex_count"].max(),
+    ))
+    axis.plot([plot_minimum, plot_maximum], [plot_minimum, plot_maximum], color="black", linestyle=":", label="No count change")
+    for boundary in (MIN_VERTICES, MAX_VERTICES):
+        axis.axvline(boundary, color="gray", linestyle="--", alpha=0.55)
+        axis.axhline(boundary, color="gray", linestyle="--", alpha=0.55)
+    axis.set_xscale("log")
+    axis.set_yscale("log")
+    axis.set(
+        title="Vertex Counts Before and After Range Adjustment",
+        xlabel="Vertices after normalization (before repair)",
+        ylabel="Final vertices",
+    )
+    axis.legend()
+    figure.tight_layout()
+    plt.show()
+
 # Function to find representative shapes based on vertices and faces count
 def find_representative_shapes(df):
     # Find mean vertices and faces count
@@ -417,6 +491,7 @@ for label,row in representative_shapes:
 
 output_root = Path("/Users/stefvanderwilt/Desktop/MMR/ShapeDatabase_normalized")
 normalize_sample_files(sample_files, data_path, output_root)
+plot_normalization_results(output_root / "normalization_log.csv")
 
 shown_categories = set()
 for sample_path in sample_files:
