@@ -93,11 +93,52 @@ def analyze(mesh, path):
         "Bounds Max": mesh.bounds[1].tolist()
     }
 
+def mesh_orientation(x, y, z):
+    """orient the mesh correctly"""
+
+    x_orient = np.sign(sum(np.sign(item) * np.square(item) for item in x))
+    y_orient = np.sign(sum(np.sign(item) * np.square(item) for item in y))
+    z_orient = np.sign(sum(np.sign(item) * np.square(item) for item in z))
+
+    return np.diag([x_orient, y_orient, z_orient, 1.0])
+
+def mesh_alignment(mesh):
+    #Step 3.1.1: align
+    
+    A_cov = np.cov(np.array(mesh.vertices).T)  # 3x3 matrix
+
+    # computes the eigenvalues and eigenvectors for the covariance matrix. 
+    eigenvalues, eigenvectors = np.linalg.eig(A_cov)
+ 
+    # get pc1 and pc2
+    order = np.argsort(eigenvalues)[::-1]
+    eigenvectors = eigenvectors[:, order]
+    pc1 = eigenvectors[:,0]
+    pc2 = eigenvectors[:,1]
+
+    # perform update formula
+    x_updated = np.dot(mesh.vertices, pc1)
+    y_updated = np.dot(mesh.vertices, pc2)
+    z_updated = np.dot(mesh.vertices, np.cross(pc1, pc2))
+
+    new_vertices = np.array([x_updated, y_updated, z_updated]).T
+
+    new_mesh = tr.Trimesh(new_vertices, mesh.faces, process=False)
+
+    # perform orientation
+    rotation = mesh_orientation(x_updated, y_updated, z_updated)
+    new_mesh.apply_transform(rotation)
+
+    return new_mesh
+
+
 # Step 2.5: Normalize the mesh
 def normalize_mesh(mesh):
    # Center using barycenter
     barycenter = mesh.vertices.mean(axis=0)
     mesh.apply_translation(-barycenter)
+
+    mesh = mesh_alignment(mesh)
        
    # Normalize size to largest dimension = 1
     max_extent = np.max(mesh.extents)
