@@ -50,23 +50,19 @@ def mesh_orientation(x, y, z):
 
 def mesh_alignment(mesh):
     #Step 3.1.1: align
-
+    
+    print("before")
+    print(mesh.vertices.mean(axis=0))
     A_cov = np.cov(np.array(mesh.vertices).T)  # 3x3 matrix
 
     # computes the eigenvalues and eigenvectors for the covariance matrix. 
     eigenvalues, eigenvectors = np.linalg.eig(A_cov)
+ 
 
-    print("==> eigenvalues for (x, y, z)")
-    print(eigenvalues)
-    print("\n==> eigenvectors")
-    print(eigenvectors.real)
-
-    print("\n==> principal_inertia_vectors")
-    print(mesh.principal_inertia_vectors)
-
-    pc1 = eigenvectors.real[0]
-    pc2 = eigenvectors.real[1]
-    #pc1, pc2, pc3 = mesh.principal_inertia_vectors
+    order = np.argsort(eigenvalues)[::-1]
+    eigenvectors = eigenvectors[:, order]
+    pc1 = eigenvectors[:,0]
+    pc2 = eigenvectors[:,1]
 
     x_updated = np.dot(mesh.vertices, pc1)
     y_updated = np.dot(mesh.vertices, pc2)
@@ -74,10 +70,13 @@ def mesh_alignment(mesh):
 
     new_vertices = np.array([x_updated, y_updated, z_updated]).T
 
-    new_mesh = tr.Trimesh(new_vertices, mesh.faces)
+    new_mesh = tr.Trimesh(new_vertices, mesh.faces, process=False)
 
     rotation = mesh_orientation(x_updated, y_updated, z_updated)
     new_mesh.apply_transform(rotation)
+
+    print("After")
+    print(new_mesh.vertices.mean(axis=0))
 
     #print(mesh.principal_inertia_vectors)
     return new_mesh
@@ -112,7 +111,7 @@ def validate_normalization(mesh):
 
     # Official numpy documentation referenced
     print(f"Is centered: {np.allclose(barycenter, [0,0,0])}")
-    print(f"Is normalized size: {np.isclose(max_extent, 1.0)}")
+    #print(f"Is normalized size: {np.isclose(max_extent, 1.0)}")
 
 
 sample_files = []
@@ -120,22 +119,17 @@ for category, files in files_by_category.items():
     sample_files.extend(random.sample(files, min(10, len(files))))
 
 
-
-path = sample_files[580]
-
-mesh = tr.load_mesh(path, force='mesh', process=False)
+ar=random.sample(range(690),100)
 
 
+#"""
+for i in ar:
+    print(i)
+    path = sample_files[i]
+    mesh = tr.load_mesh(path, force='mesh', process=False)
+    normal_mesh = normalize_mesh(mesh)
 
-
-#print("mesh")
-#validate_normalization(mesh)
-
-
-
-normal_mesh = normalize_mesh(mesh)
-print("normalised mesh")
-validate_normalization(normal_mesh)
-show_mesh(normal_mesh, path)
+    validate_normalization(normal_mesh)
+#show_mesh(normal_mesh, path)
 #"""
 
