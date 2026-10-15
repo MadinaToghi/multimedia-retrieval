@@ -48,19 +48,21 @@ def mesh_orientation(x, y, z):
 
     return np.diag([x_orient, y_orient, z_orient, 1.0])
 
+def find_mesh_eigenvectors(mesh):
+     
+    A_cov = np.cov(np.array(mesh.vertices).T)  # 3x3 matrix
+    # computes the eigenvalues and eigenvectors for the covariance matrix. 
+    eigenvalues, eigenvectors = np.linalg.eig(A_cov)
+    order = np.argsort(eigenvalues)[::-1]
+    eigenvectors = eigenvectors[:, order]
+
+    return eigenvectors
+
 def mesh_alignment(mesh):
     #Step 3.1.1: align
     
-    print("before")
-    print(mesh.vertices.mean(axis=0))
-    A_cov = np.cov(np.array(mesh.vertices).T)  # 3x3 matrix
-
-    # computes the eigenvalues and eigenvectors for the covariance matrix. 
-    eigenvalues, eigenvectors = np.linalg.eig(A_cov)
- 
-
-    order = np.argsort(eigenvalues)[::-1]
-    eigenvectors = eigenvectors[:, order]
+    eigenvectors = find_mesh_eigenvectors(mesh)
+   
     pc1 = eigenvectors[:,0]
     pc2 = eigenvectors[:,1]
 
@@ -75,10 +77,6 @@ def mesh_alignment(mesh):
     rotation = mesh_orientation(x_updated, y_updated, z_updated)
     new_mesh.apply_transform(rotation)
 
-    print("After")
-    print(new_mesh.vertices.mean(axis=0))
-
-    #print(mesh.principal_inertia_vectors)
     return new_mesh
 
 
@@ -106,12 +104,17 @@ def validate_normalization(mesh):
     # Check if the mesh is centered at the origin
     barycenter = mesh.vertices.mean(axis=0)
     max_extent = np.max(mesh.extents)
+    mesh_eigenvectors = find_mesh_eigenvectors(mesh).real
 
     print(f"Barycenter: {barycenter}, Max Extent: {max_extent}")
+    print(f"eigenvectors:")
+    np.set_printoptions(formatter={'float': '{:.2e}'.format})
+    print(mesh_eigenvectors)
 
     # Official numpy documentation referenced
     print(f"Is centered: {np.allclose(barycenter, [0,0,0])}")
-    #print(f"Is normalized size: {np.isclose(max_extent, 1.0)}")
+    print(f"Is aligned: {np.allclose(abs(mesh_eigenvectors), np.identity(3))}")
+    print(f"Is normalized size: {np.isclose(max_extent, 1.0)}")
 
 
 sample_files = []
@@ -119,17 +122,24 @@ for category, files in files_by_category.items():
     sample_files.extend(random.sample(files, min(10, len(files))))
 
 
-ar=random.sample(range(690),100)
+ar=random.sample(range(690), 5)
 
-
-#"""
 for i in ar:
-    print(i)
+
     path = sample_files[i]
     mesh = tr.load_mesh(path, force='mesh', process=False)
+    print("Mesh pre-alignment")
+    print(path.name)
+    validate_normalization(mesh)
+    show_mesh(mesh, path)
+
     normal_mesh = normalize_mesh(mesh)
 
+    print("Mesh post-alignment")
     validate_normalization(normal_mesh)
-#show_mesh(normal_mesh, path)
-#"""
+    show_mesh(normal_mesh, path)
+
+
+
+
 
