@@ -93,29 +93,30 @@ def analyze(mesh, path):
     }
 
 def mesh_orientation(x, y, z):
-    """orient the mesh correctly"""
-
     x_orient = np.sign(sum(np.sign(item) * np.square(item) for item in x))
     y_orient = np.sign(sum(np.sign(item) * np.square(item) for item in y))
     z_orient = np.sign(sum(np.sign(item) * np.square(item) for item in z))
 
     return np.diag([x_orient, y_orient, z_orient, 1.0])
 
+def find_mesh_eigenvectors(mesh):
+     
+    A_cov = np.cov(np.array(mesh.vertices).T)  # 3x3 matrix
+    # computes the eigenvalues and eigenvectors for the covariance matrix. 
+    eigenvalues, eigenvectors = np.linalg.eig(A_cov)
+    order = np.argsort(eigenvalues)[::-1]
+    eigenvectors = eigenvectors[:, order]
+
+    return eigenvectors
+
 def mesh_alignment(mesh):
     #Step 3.1.1: align
     
-    A_cov = np.cov(np.array(mesh.vertices).T)  # 3x3 matrix
-
-    # computes the eigenvalues and eigenvectors for the covariance matrix. 
-    eigenvalues, eigenvectors = np.linalg.eig(A_cov)
- 
-    # get pc1 and pc2
-    order = np.argsort(eigenvalues)[::-1]
-    eigenvectors = eigenvectors[:, order]
+    eigenvectors = find_mesh_eigenvectors(mesh)
+   
     pc1 = eigenvectors[:,0]
     pc2 = eigenvectors[:,1]
 
-    # perform update formula
     x_updated = np.dot(mesh.vertices, pc1)
     y_updated = np.dot(mesh.vertices, pc2)
     z_updated = np.dot(mesh.vertices, np.cross(pc1, pc2))
@@ -124,7 +125,6 @@ def mesh_alignment(mesh):
 
     new_mesh = tr.Trimesh(new_vertices, mesh.faces, process=False)
 
-    # perform orientation
     rotation = mesh_orientation(x_updated, y_updated, z_updated)
     new_mesh.apply_transform(rotation)
 
@@ -359,11 +359,16 @@ def validate_normalization(mesh):
     # Check if the mesh is centered at the origin
     barycenter = mesh.vertices.mean(axis=0)
     max_extent = np.max(mesh.extents)
+    mesh_eigenvectors = find_mesh_eigenvectors(mesh)
+    mesh_eigenvectors = np.round(mesh_eigenvectors.real, 2)
 
     print(f"Barycenter: {barycenter}, Max Extent: {max_extent}")
+    print(f"eigenvectors:")
+    print(mesh_eigenvectors)
 
     # Official numpy documentation referenced
     print(f"Is centered: {np.allclose(barycenter, [0,0,0])}")
+    print(f"Is aligned: {np.allclose(np.abs(mesh_eigenvectors), np.identity(3))}")
     print(f"Is normalized size: {np.isclose(max_extent, 1.0)}")
 
 def plot_statistics(df):
@@ -549,9 +554,14 @@ for sample_path in sample_files:
         f"normalized_vertices={len(normalized_mesh.vertices)}"
     )
     print(f"Showing original | {category}/{sample_path.name}")
+    validate_normalization(original_mesh)
     show_mesh(original_mesh, sample_path.with_name(f"{sample_path.stem}__original.obj"))
+    
+    
     print(f"Showing normalized | {category}/{normalized_path.name}")
+    validate_normalization(normalized_mesh)
     show_mesh(normalized_mesh, normalized_path.with_name(f"{normalized_path.stem}__normalized.obj"))
+    
     shown_categories.add(category)
     if len(shown_categories) == 10:
         break
