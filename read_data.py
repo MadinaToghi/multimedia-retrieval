@@ -130,7 +130,6 @@ def mesh_alignment(mesh):
 
     return new_mesh
 
-
 # Step 2.5: Normalize the mesh
 def normalize_mesh(mesh):
    # Center using barycenter
@@ -138,6 +137,7 @@ def normalize_mesh(mesh):
     mesh.apply_translation(-barycenter)
 
     mesh = mesh_alignment(mesh)
+    
        
    # Normalize size to largest dimension = 1
     max_extent = np.max(mesh.extents)
@@ -283,13 +283,18 @@ def process_single_mesh(path, data_path, output_root):
 
         mesh = tr.load(path, force="mesh", process=False)
         row["original_vertex_count"] = len(mesh.vertices)
-        mesh = normalize_mesh(mesh)
-        row["post_normalize_vertex_count"] = len(mesh.vertices)
+
+        # === Original spot for normalization, didn't work with alignment ===
+        # mesh = normalize_mesh(mesh) 
+        # row["post_normalize_vertex_count"] = len(mesh.vertices)
+        # ===================================================================
 
         mesh, was_repaired, components_removed = repair_mesh(mesh)
         row["was_repaired"] = was_repaired
         row["components_removed"] = components_removed
         errors = list(mesh.metadata.pop("_normalization_errors", []))
+
+       
 
         vertex_count = len(mesh.vertices)
         if MIN_VERTICES <= vertex_count <= MAX_VERTICES:
@@ -316,6 +321,11 @@ def process_single_mesh(path, data_path, output_root):
             )
             method_used = "simplified"
             errors.extend(mesh.metadata.pop("_normalization_errors", []))
+
+        # ===== Normalization works when it is put here! =====
+        mesh = normalize_mesh(mesh) 
+        row["post_normalize_vertex_count"] = len(mesh.vertices)
+        # ====================================================
 
         output_path = output_root / relative_path.with_suffix(".obj")
         output_path.parent.mkdir(parents=True, exist_ok=True)

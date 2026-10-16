@@ -122,7 +122,7 @@ for category, files in files_by_category.items():
     sample_files.extend(random.sample(files, min(10, len(files))))
 
 
-ar=random.sample(range(690), 5)
+ar=random.sample(range(690), 10)
 
 for i in ar:
 
