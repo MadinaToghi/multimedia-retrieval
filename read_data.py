@@ -4,14 +4,13 @@ import random
 import pandas as pd
 import matplotlib.pyplot as plt
 import csv
-
 from pathlib import Path
 from vedo import Mesh, show
 from tqdm import tqdm
 
 MIN_VERTICES = 5000
 MAX_VERTICES = 10000
-MAX_ITERATIONS = 20
+MAX_ITERATIONS = 15
 
 data_path = Path("../ShapeDatabase_INFOMR")
 
@@ -92,6 +91,61 @@ def analyze(mesh, path):
         "Bounds Min": mesh.bounds[0].tolist(),
         "Bounds Max": mesh.bounds[1].tolist()
     }
+
+def mesh_orientation(x, y, z):
+    x_orient = np.sign(sum(np.sign(item) * np.square(item) for item in x))
+    y_orient = np.sign(sum(np.sign(item) * np.square(item) for item in y))
+    z_orient = np.sign(sum(np.sign(item) * np.square(item) for item in z))
+
+    return np.diag([x_orient, y_orient, z_orient, 1.0])
+
+def find_mesh_eigenvectors(mesh):
+     
+    A_cov = np.cov(np.array(mesh.vertices).T)  # 3x3 matrix
+    # computes the eigenvalues and eigenvectors for the covariance matrix. 
+    eigenvalues, eigenvectors = np.linalg.eig(A_cov)
+    order = np.argsort(eigenvalues)[::-1]
+    eigenvectors = eigenvectors[:, order]
+
+    return eigenvectors
+
+def mesh_alignment(mesh):
+    #Step 3.1.1: align
+    
+    eigenvectors = find_mesh_eigenvectors(mesh)
+   
+    pc1 = eigenvectors[:,0]
+    pc2 = eigenvectors[:,1]
+
+    x_updated = np.dot(mesh.vertices, pc1)
+    y_updated = np.dot(mesh.vertices, pc2)
+    z_updated = np.dot(mesh.vertices, np.cross(pc1, pc2))
+
+    new_vertices = np.array([x_updated, y_updated, z_updated]).T
+
+    new_mesh = tr.Trimesh(new_vertices, mesh.faces, process=False)
+
+    rotation = mesh_orientation(x_updated, y_updated, z_updated)
+    new_mesh.apply_transform(rotation)
+
+    return new_mesh
+
+# Step 2.5: Normalize the mesh
+def normalize_mesh(mesh):
+   # Center using barycenter
+    barycenter = mesh.vertices.mean(axis=0)
+    mesh.apply_translation(-barycenter)
+
+    mesh = mesh_alignment(mesh)
+    
+       
+   # Normalize size to largest dimension = 1
+    max_extent = np.max(mesh.extents)
+
+    if max_extent > 0:
+        mesh.apply_scale(1.0 / max_extent)
+
+    return mesh
 
 def repair_mesh(mesh):
     """Fill holes and merge vertices; return the mesh, repair flag, and removed-component count."""
@@ -210,12 +264,6 @@ def process_single_mesh(path, data_path, output_root):
         "filename": relative_path,
         "original_vertex_count": "",
         "post_normalize_vertex_count": "",
-        "barycenter_before": "",
-        "max_extent_before": "",
-        "barycenter_after": "",
-        "max_extent_after": "",
-        "is_centered": False,
-        "is_normalized": False,
         "was_repaired": False,
         "components_removed": 0,
         "final_vertex_count": "",
@@ -236,10 +284,17 @@ def process_single_mesh(path, data_path, output_root):
         mesh = tr.load(path, force="mesh", process=False)
         row["original_vertex_count"] = len(mesh.vertices)
 
+        # === Original spot for normalization, didn't work with alignment ===
+        # mesh = normalize_mesh(mesh) 
+        # row["post_normalize_vertex_count"] = len(mesh.vertices)
+        # ===================================================================
+
         mesh, was_repaired, components_removed = repair_mesh(mesh)
         row["was_repaired"] = was_repaired
         row["components_removed"] = components_removed
         errors = list(mesh.metadata.pop("_normalization_errors", []))
+
+       
 
         vertex_count = len(mesh.vertices)
         if MIN_VERTICES <= vertex_count <= MAX_VERTICES:
@@ -267,29 +322,11 @@ def process_single_mesh(path, data_path, output_root):
             method_used = "simplified"
             errors.extend(mesh.metadata.pop("_normalization_errors", []))
 
-        # Step 2.5: statistics before normalization
-        barycenter_before = mesh.vertices.mean(axis=0)
-        max_extent_before = np.max(mesh.extents)
-        
-        row["barycenter_before"] = barycenter_before.tolist()
-        row["max_extent_before"] = max_extent_before
-        
-        # Normalize
-        mesh = normalize_mesh(mesh)
+        # ===== Normalization works when it is put here! =====
+        mesh = normalize_mesh(mesh) 
         row["post_normalize_vertex_count"] = len(mesh.vertices)
-        
-        # Step 2.5: validation after normalization
-        (barycenter_after,
-         max_extent_after,
-         is_centered,
-         is_normalized
-        ) = validate_normalization(mesh)
-        
-        row["barycenter_after"] = barycenter_after.tolist()
-        row["max_extent_after"] = max_extent_after
-        row["is_centered"] = is_centered
-        row["is_normalized"] = is_normalized
-            
+        # ====================================================
+
         output_path = output_root / relative_path.with_suffix(".obj")
         output_path.parent.mkdir(parents=True, exist_ok=True)
         mesh.export(output_path, file_type="obj")
@@ -314,24 +351,10 @@ def normalize_sample_files(files, data_path, output_root):
     output_root = Path(output_root)
     output_root.mkdir(parents=True, exist_ok=True)
     columns = [
-    "filename",
-    "original_vertex_count",
-    "post_normalize_vertex_count",
-    "barycenter_before",
-    "max_extent_before",
-    "barycenter_after",
-    "max_extent_after",
-    "is_centered",
-    "is_normalized",
-    "was_repaired",
-    "components_removed",
-    "final_vertex_count",
-    "method_used",
-    "iterations_used",
-    "converged",
-    "status",
-    "error",
-]
+        "filename", "original_vertex_count", "post_normalize_vertex_count",
+        "was_repaired", "components_removed", "final_vertex_count",
+        "method_used", "iterations_used", "converged", "status", "error",
+    ]
 
     with (output_root / "normalization_log.csv").open("w", newline="", encoding="utf-8") as log_file:
         writer = csv.DictWriter(log_file, fieldnames=columns)
@@ -340,6 +363,23 @@ def normalize_sample_files(files, data_path, output_root):
             row = process_single_mesh(path, data_path, output_root)
             writer.writerow(row)
             log_file.flush()
+
+# Step 2.5: Validate the normalization
+def validate_normalization(mesh):
+    # Check if the mesh is centered at the origin
+    barycenter = mesh.vertices.mean(axis=0)
+    max_extent = np.max(mesh.extents)
+    mesh_eigenvectors = find_mesh_eigenvectors(mesh)
+    mesh_eigenvectors = np.round(mesh_eigenvectors.real, 2)
+
+    print(f"Barycenter: {barycenter}, Max Extent: {max_extent}")
+    print(f"eigenvectors:")
+    print(mesh_eigenvectors)
+
+    # Official numpy documentation referenced
+    print(f"Is centered: {np.allclose(barycenter, [0,0,0])}")
+    print(f"Is aligned: {np.allclose(np.abs(mesh_eigenvectors), np.identity(3))}")
+    print(f"Is normalized size: {np.isclose(max_extent, 1.0)}")
 
 def plot_statistics(df):
     plt.figure()
@@ -363,6 +403,81 @@ def plot_statistics(df):
     plt.ylabel("Number of shapes")
     plt.show()
 
+
+def plot_normalization_results(log_path):
+    """Display vertex-count, method-count, and before/after plots from the batch CSV."""
+    results = pd.read_csv(log_path)
+    successful = results[results["status"] == "OK"].copy()
+    for column in ("post_normalize_vertex_count", "final_vertex_count"):
+        successful[column] = pd.to_numeric(successful[column], errors="coerce")
+    successful = successful.dropna(subset=["post_normalize_vertex_count", "final_vertex_count"])
+
+    maximum_vertices = max(
+        MAX_VERTICES,
+        int(np.ceil(successful["final_vertex_count"].max() / 500) * 500),
+    )
+    bins = np.arange(0, maximum_vertices + 501, 500)
+    figure, axis = plt.subplots()
+    axis.hist(successful["final_vertex_count"], bins=bins, color="steelblue", edgecolor="white")
+    axis.axvline(MIN_VERTICES, color="darkorange", linestyle="--", label=f"Minimum ({MIN_VERTICES:,})")
+    axis.axvline(MAX_VERTICES, color="firebrick", linestyle="--", label=f"Maximum ({MAX_VERTICES:,})")
+    axis.set(title="Final Vertex Counts", xlabel="Vertex count", ylabel="Number of OBJ files")
+    axis.legend()
+    figure.tight_layout()
+
+    method_order = ["refined", "simplified", "unchanged"]
+    method_labels = ["Refined", "Decimated", "Unchanged"]
+    method_counts = successful["method_used"].value_counts()
+    figure, axis = plt.subplots()
+    axis.bar(method_labels, [method_counts.get(method, 0) for method in method_order], color=[
+        "seagreen", "indianred", "slategray",
+    ])
+    axis.set(title="Objects by Processing Method", ylabel="Number of OBJ files")
+    axis.tick_params(axis="x", rotation=15)
+    figure.tight_layout()
+
+    figure, axis = plt.subplots()
+    method_styles = {
+        "refined": ("seagreen", "Refined"),
+        "refined+corrected": ("mediumseagreen", "Refined + corrected"),
+        "simplified": ("indianred", "Decimated"),
+    }
+    changed = successful[successful["method_used"].isin(method_styles)]
+    for method, (color, label) in method_styles.items():
+        group = changed[changed["method_used"] == method]
+        if not group.empty:
+            axis.scatter(
+                group["post_normalize_vertex_count"],
+                group["final_vertex_count"],
+                s=24,
+                alpha=0.65,
+                color=color,
+                label=label,
+            )
+
+    plot_minimum = max(1, int(min(
+        changed["post_normalize_vertex_count"].min(),
+        changed["final_vertex_count"].min(),
+    )))
+    plot_maximum = int(max(
+        changed["post_normalize_vertex_count"].max(),
+        changed["final_vertex_count"].max(),
+    ))
+    axis.plot([plot_minimum, plot_maximum], [plot_minimum, plot_maximum], color="black", linestyle=":", label="No count change")
+    for boundary in (MIN_VERTICES, MAX_VERTICES):
+        axis.axvline(boundary, color="gray", linestyle="--", alpha=0.55)
+        axis.axhline(boundary, color="gray", linestyle="--", alpha=0.55)
+    axis.set_xscale("log")
+    axis.set_yscale("log")
+    axis.set(
+        title="Vertex Counts Before and After Range Adjustment",
+        xlabel="Vertices after normalization (before repair)",
+        ylabel="Final vertices",
+    )
+    axis.legend()
+    figure.tight_layout()
+    plt.show()
+
 # Function to find representative shapes based on vertices and faces count
 def find_representative_shapes(df):
     # Find mean vertices and faces count
@@ -384,31 +499,7 @@ def find_representative_shapes(df):
 
     return average_shape, fewest_vertices, most_vertices, fewest_faces, most_faces
 
-# Step 2.5: Normalize the mesh
-def normalize_mesh(mesh):
-   # Center using barycenter
-    barycenter = mesh.vertices.mean(axis=0)
-    mesh.apply_translation(-barycenter)
-       
-   # Uniformly scale so largers bounding-box dimension is 1
-    max_extent = np.max(mesh.extents)
 
-    if max_extent > 0:
-        mesh.apply_scale(1.0 / max_extent)
-
-    return mesh
-
-# Step 2.5: Validate the normalization
-def validate_normalization(mesh):
-    # Check if the mesh is centered at the origin
-    barycenter = mesh.vertices.mean(axis=0)
-    max_extent = np.max(mesh.extents)
-
-    # Official numpy documentation referenced
-    is_centered = np.allclose(barycenter, [0,0,0])
-    is_normalized = np.isclose(max_extent, 1.0)
-
-    return barycenter, max_extent, is_centered, is_normalized
 
 # Step 2.1 analysis
 """
@@ -454,8 +545,9 @@ for label,row in representative_shapes:
     show_mesh(mesh, path)
 """
 
-output_root = Path("C:\\Users\\madin\\Documents\\multimedia-retrieval\\ShapeDatabase_INFOMR_normalized")
+output_root = Path("../ShapeDatabase_normalized")
 normalize_sample_files(sample_files, data_path, output_root)
+plot_normalization_results(output_root / "normalization_log.csv")
 
 shown_categories = set()
 for sample_path in sample_files:
@@ -472,9 +564,14 @@ for sample_path in sample_files:
         f"normalized_vertices={len(normalized_mesh.vertices)}"
     )
     print(f"Showing original | {category}/{sample_path.name}")
+    validate_normalization(original_mesh)
     show_mesh(original_mesh, sample_path.with_name(f"{sample_path.stem}__original.obj"))
+    
+    
     print(f"Showing normalized | {category}/{normalized_path.name}")
+    validate_normalization(normalized_mesh)
     show_mesh(normalized_mesh, normalized_path.with_name(f"{normalized_path.stem}__normalized.obj"))
+    
     shown_categories.add(category)
     if len(shown_categories) == 10:
         break
