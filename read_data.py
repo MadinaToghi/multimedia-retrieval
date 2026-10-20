@@ -150,25 +150,42 @@ def normalize_mesh(mesh):
 def repair_mesh(mesh):
     """Fill holes and merge vertices; return the mesh, repair flag, and removed-component count."""
     original_mesh = mesh
-    working_mesh = None
-    was_repaired = False
     components_removed = 0
 
     try:
         working_mesh = mesh.copy()
+
+        vertices_before = len(working_mesh.vertices)
+        faces_before = len(working_mesh.faces)
+
+        # Merge duplicate vertices
+        working_mesh.merge_vertices()
+
+        # Remove duplicate faces
+        working_mesh.update_faces(
+            working_mesh.unique_faces()
+        )
+
+        # Remove unused vertices
+        working_mesh.remove_unreferenced_vertices()
+    
+        # Attempt to fill holes
         if not working_mesh.is_watertight:
-            vertices_before = len(working_mesh.vertices)
-            faces_before = len(working_mesh.faces)
-            holes_filled = working_mesh.fill_holes()
-            working_mesh.merge_vertices()
-            was_repaired = bool(holes_filled) or (
-                len(working_mesh.vertices) != vertices_before
-                or len(working_mesh.faces) != faces_before
-            )
+            working_mesh.fill_holes()
+
+        # Check whether geometry changed
+        was_repaired = (
+            len(working_mesh.vertices) != vertices_before
+            or len(working_mesh.faces) != faces_before
+        )
 
         return working_mesh, was_repaired, components_removed
+
     except Exception as error:
-        original_mesh.metadata.setdefault("_normalization_errors", []).append(str(error))
+        original_mesh.metadata.setdefault(
+            "_normalization_errors", []
+        ).append(str(error))
+
         return original_mesh, False, 0
 
 
@@ -325,6 +342,12 @@ def process_single_mesh(path, data_path, output_root):
         # ===== Normalization works when it is put here! =====
         mesh = normalize_mesh(mesh) 
         row["post_normalize_vertex_count"] = len(mesh.vertices)
+
+        # Validate final mesh
+        duplicate_faces = len(mesh.faces) - int(mesh.unique_faces().sum())
+
+        if duplicate_faces > 0:
+            print(f"WARNING: {path.name} still has {duplicate_faces} duplicate faces")
         # ====================================================
 
         output_path = output_root / relative_path.with_suffix(".obj")
@@ -545,33 +568,35 @@ for label,row in representative_shapes:
     show_mesh(mesh, path)
 """
 
-output_root = Path("../ShapeDatabase_normalized")
+output_root = Path(
+    r"C:\Users\madin\Documents\multimedia-retrieval\ShapeDatabase_INFOMR_normalized_cleaned"
+)
 normalize_sample_files(sample_files, data_path, output_root)
 plot_normalization_results(output_root / "normalization_log.csv")
 
-shown_categories = set()
-for sample_path in sample_files:
-    category = sample_path.parent.name
-    if category in shown_categories:
-        continue
+# shown_categories = set()
+# for sample_path in sample_files:
+#     category = sample_path.parent.name
+#     if category in shown_categories:
+#         continue
 
-    normalized_path = output_root / sample_path.relative_to(data_path).with_suffix(".obj")
-    original_mesh = tr.load(sample_path, force="mesh", process=False)
-    normalized_mesh = tr.load(normalized_path, force="mesh", process=False)
-    print(
-        f"{category}/{sample_path.name} | "
-        f"original_vertices={len(original_mesh.vertices)}, "
-        f"normalized_vertices={len(normalized_mesh.vertices)}"
-    )
-    print(f"Showing original | {category}/{sample_path.name}")
-    validate_normalization(original_mesh)
-    show_mesh(original_mesh, sample_path.with_name(f"{sample_path.stem}__original.obj"))
+#     normalized_path = output_root / sample_path.relative_to(data_path).with_suffix(".obj")
+#     original_mesh = tr.load(sample_path, force="mesh", process=False)
+#     normalized_mesh = tr.load(normalized_path, force="mesh", process=False)
+#     print(
+#         f"{category}/{sample_path.name} | "
+#         f"original_vertices={len(original_mesh.vertices)}, "
+#         f"normalized_vertices={len(normalized_mesh.vertices)}"
+#     )
+#     print(f"Showing original | {category}/{sample_path.name}")
+#     validate_normalization(original_mesh)
+#     show_mesh(original_mesh, sample_path.with_name(f"{sample_path.stem}__original.obj"))
     
     
-    print(f"Showing normalized | {category}/{normalized_path.name}")
-    validate_normalization(normalized_mesh)
-    show_mesh(normalized_mesh, normalized_path.with_name(f"{normalized_path.stem}__normalized.obj"))
+#     print(f"Showing normalized | {category}/{normalized_path.name}")
+#     validate_normalization(normalized_mesh)
+#     show_mesh(normalized_mesh, normalized_path.with_name(f"{normalized_path.stem}__normalized.obj"))
     
-    shown_categories.add(category)
-    if len(shown_categories) == 10:
-        break
+#     shown_categories.add(category)
+#     if len(shown_categories) == 10:
+#         break

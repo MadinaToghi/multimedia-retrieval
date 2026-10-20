@@ -8,7 +8,7 @@ from pathlib import Path
 # First step: Prepare your data
 
 data_path = Path(
-    r"C:\Users\madin\Documents\multimedia-retrieval\ShapeDatabase_INFOMR_normalized"
+    r"C:\Users\madin\Documents\multimedia-retrieval\ShapeDatabase_INFOMR_normalized_cleaned"
 )
 
 obj_files = sorted(data_path.rglob("*.obj"))
@@ -21,7 +21,7 @@ B = 25
 
     # Step 2: Calculate the five descriptors
 
-np.random_seed = 42
+np.random.seed(42)
 
 # D2
 def D2_descriptor(vertices, N):
