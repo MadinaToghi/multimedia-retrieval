@@ -25,8 +25,26 @@ np.random.seed(42)
 
 # D2
 def D2_descriptor(vertices, N):
+
+    vertex_count = len(vertices)
+
+    if vertex_count < 2:
+            raise ValueError("D2 requires at least 2 vertices")
+    
     # Select N pairs of random vertex indices
-    indices = np.random.randint(0, len(vertices), size=(N, 2))
+    indices = np.random.randint(0, vertex_count, size=(N, 2))
+
+   # Identify pairs containing repeated vertices
+
+    invalid = (indices[:, 0] == indices[:, 1])    
+   
+       # Resample invalid triples until all indices are distinct
+    while np.any(invalid):
+        indices[invalid] = np.random.randint(
+            0, vertex_count, size=(invalid.sum(), 2)
+        )
+   
+        invalid = (indices[:, 0] == indices[:, 1]) 
 
     # Get their coordinates
     points1 = vertices[indices[:, 0]]
@@ -52,8 +70,32 @@ def D1_descriptor(vertices, N):
     return distances
 
 def D3_descriptor(vertices, N):
+    vertex_count = len(vertices)
+
+    if vertex_count < 3:
+        raise ValueError("D3 requires at least 3 vertices")
+    
     # Select N random vertex indices
-    indices = np.random.randint(0, len(vertices), size=(N, 3))
+    indices = np.random.randint(0, vertex_count, size=(N, 3))
+
+    # Identify triples containing repeated vertices
+    invalid = (
+        (indices[:, 0] == indices[:, 1]) |
+        (indices[:, 0] == indices[:, 2]) |
+        (indices[:, 1] == indices[:, 2])
+    )
+
+    # Resample invalid triples until all indices are distinct
+    while np.any(invalid):
+        indices[invalid] = np.random.randint(
+            0, vertex_count, size=(invalid.sum(), 3)
+        )
+
+        invalid = (
+            (indices[:, 0] == indices[:, 1]) |
+            (indices[:, 0] == indices[:, 2]) |
+            (indices[:, 1] == indices[:, 2])
+        )
 
     # Get coordinates
     points1 = vertices[indices[:, 0]]
@@ -74,8 +116,40 @@ def D3_descriptor(vertices, N):
     return D3_values
 
 def D4_descriptor(vertices, N):
+
+    vertex_count = len(vertices)
+    
+    if vertex_count < 4:
+        raise ValueError("D4 requires at least 4 vertices")
+
     # Select N random vertex indices
-    indices = np.random.randint(0, len(vertices), size=(N, 4))
+    indices = np.random.randint(0, vertex_count, size=(N, 4))
+
+    # Identify quadruples containing repeated vertices
+    invalid = (
+            (indices[:, 0] == indices[:, 1]) |
+            (indices[:, 0] == indices[:, 2]) |
+            (indices[:, 0] == indices[:, 3]) |
+            (indices[:, 1] == indices[:, 2]) |
+            (indices[:, 1] == indices[:, 3]) |
+            (indices[:, 2] == indices[:, 3])
+        )
+    
+        # Resample invalid quadruples until all indices are distinct
+    while np.any(invalid):
+        indices[invalid] = np.random.randint(
+            0, vertex_count, size=(invalid.sum(), 4)
+        )
+    
+        invalid = (
+            (indices[:, 0] == indices[:, 1]) |
+            (indices[:, 0] == indices[:, 2]) |
+            (indices[:, 0] == indices[:, 3]) |
+            (indices[:, 1] == indices[:, 2]) |
+            (indices[:, 1] == indices[:, 3]) |
+            (indices[:, 2] == indices[:, 3])
+        )
+    
 
     # Get coordinates
     points1 = vertices[indices[:, 0]]
@@ -97,17 +171,77 @@ def D4_descriptor(vertices, N):
     return D4_values
 
 def A3_descriptor(vertices, N):
+
+    vertex_count = len(vertices)
+
+    if vertex_count < 3:
+        raise ValueError("A3 requires at least 3 vertices")
+
     # Select N random vertex indices
-    indices = np.random.randint(0, len(vertices), size=(N, 3))
+    indices = np.random.randint(0, vertex_count, size=(N, 3))
 
-    # Get coordinates
-    points1 = vertices[indices[:, 0]]
-    points2 = vertices[indices[:, 1]]
-    points3 = vertices[indices[:, 2]]
+    # Identify triples containing repeated vertices
+    invalid = (
+        (indices[:, 0] == indices[:, 1]) |
+        (indices[:, 0] == indices[:, 2]) |
+        (indices[:, 1] == indices[:, 2])
+    )
+    
+        # Resample invalid triples until all indices are distinct
+    while np.any(invalid):
+        indices[invalid] = np.random.randint(
+            0, vertex_count, size=(invalid.sum(), 3)
+        )
+    
+        invalid = (
+            (indices[:, 0] == indices[:, 1]) |
+            (indices[:, 0] == indices[:, 2]) |
+            (indices[:, 1] == indices[:, 2])
+        )
 
-    # Vectors
+    # Reject samples that contain identical coordinates
+    while True:
+        points1 = vertices[indices[:, 0]]
+        points2 = vertices[indices[:, 1]]
+        points3 = vertices[indices[:, 2]]
+
+        invalid_geometry = (
+            (np.linalg.norm(points2 - points1, axis=1) == 0) |
+            (np.linalg.norm(points3 - points1, axis=1) == 0)
+     )
+
+        if not np.any(invalid_geometry):
+            break
+
+        # Resample only the invalid triples
+        count = int(invalid_geometry.sum())
+
+        indices[invalid_geometry] = np.random.randint(
+            0, vertex_count, size=(count, 3)
+        )
+
+    # Ensure resampled triples contain distinct indices
+        invalid_indices = (
+            (indices[:, 0] == indices[:, 1]) |
+            (indices[:, 0] == indices[:, 2]) |
+            (indices[:, 1] == indices[:, 2])
+        )
+
+        while np.any(invalid_indices):
+            indices[invalid_indices] = np.random.randint(
+            0, vertex_count, size=(int(invalid_indices.sum()), 3)
+        )
+
+        invalid_indices = (
+            (indices[:, 0] == indices[:, 1]) |
+            (indices[:, 0] == indices[:, 2]) |
+            (indices[:, 1] == indices[:, 2])
+        )
+
+    # Calculate vectors using valid samples
     v1 = points2 - points1
     v2 = points3 - points1
+
 
     # calculate the angle between vectors using the dot product
     numerator = np.sum(v1 * v2, axis = 1)
@@ -203,6 +337,14 @@ for path, distances in all_D2.items():
     D4_hist, _ = np.histogram(all_D4[path], bins=D4_bin_edges)
     A3_hist, _ = np.histogram(all_A3[path], bins=A3_bin_edges)
 
+    D1_hist = D1_hist/D1_hist.sum()
+    D2_hist = D2_hist/D2_hist.sum()
+    D3_hist = D3_hist/D3_hist.sum()
+    D4_hist = D4_hist/D4_hist.sum()
+    A3_hist = A3_hist/A3_hist.sum()
+
+
+
     calculations.append({
         "file_path": path,
         "A3": A3_hist,
@@ -221,11 +363,11 @@ print(len(calculations[0]["D3"])) # Expected: 25
 print(len(calculations[0]["D4"])) # Expected: 25
 print(len(calculations[0]["A3"])) # Expected: 25
 
-print(sum(calculations[0]["D1"])) # Expected: 10000
-print(sum(calculations[0]["D2"])) # Expected: 10000
-print(sum(calculations[0]["D3"])) # Expected: 10000
-print(sum(calculations[0]["D4"])) # Expected: 10000
-print(sum(calculations[0]["A3"])) # Expected: 10000
+print(sum(calculations[0]["D1"]))  # Expected: approximately 1.0
+print(sum(calculations[0]["D2"]))  # Expected: approximately 1.0
+print(sum(calculations[0]["D3"]))  # Expected: approximately 1.0
+print(sum(calculations[0]["D4"]))  # Expected: approximately 1.0
+print(sum(calculations[0]["A3"]))  # Expected: approximately 1.0
 
 print("D1 range:", D1_bin_edges[0], D1_bin_edges[-1])
 print("D2 range:", D2_bin_edges[0], D2_bin_edges[-1])
@@ -234,25 +376,24 @@ print("D4 range:", D4_bin_edges[0], D4_bin_edges[-1])
 print("A3 range:", A3_bin_edges[0], A3_bin_edges[-1])
 
 for shape in calculations:
-    assert len(shape["D1"]) == B
-    assert len(shape["D2"]) == B
-    assert sum(shape["D1"]) == N
-    assert sum(shape["D2"]) == N
-    assert sum(shape["D3"]) == N
-    assert sum(shape["D4"]) == N
-    assert len(shape["D3"]) == B
-    assert len(shape["D4"]) == B
-    assert len(shape["A3"]) == B
-    assert sum(shape["A3"]) == N
+    for descriptor in ["A3", "D1", "D2", "D3", "D4"]:
+        hist = shape[descriptor]
 
-print("All shapes passed!")
+        assert len(hist) == B
+        assert np.isclose(hist.sum(), 1.0)
+        assert np.all(hist >= 0)
+
+print("All normalized histograms passed!")
 
 
-# Save the results to a CSV file!
+# Save the results to a CSV file
 rows = []
 
 for shape in calculations:
-    row = {"file_path": shape["file_path"]}
+    row = {
+    "Class": Path(shape["file_path"]).parent.name,
+    "File": Path(shape["file_path"]).name
+}
 
     for descriptor in ["D1", "D2", "D3", "D4", "A3"]:
         for i, value in enumerate(shape[descriptor]):
@@ -263,5 +404,5 @@ for shape in calculations:
 df = pd.DataFrame(rows)
 df.to_csv("shape_property_descriptors.csv", index=False)
 
-print(df.shape) # Expected: (690, 126)
+print(df.shape)  # Expected: (690, 127)
 print(df.isnull().sum().sum())  # Expected: 0
