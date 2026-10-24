@@ -235,4 +235,4 @@ __pycache__/
 .ipynb_checkpoints/
 
 # csv files
-.csv
+*.csv
