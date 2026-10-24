@@ -1,16 +1,23 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import read_data as rd
-import shape_property_descriptors as spd
 from pathlib import Path
+import MMR_utility as MMRU
+import trimesh as tr
 
 
-df = pd.read_csv("shape_property_descriptors.csv")
+#df = pd.read_csv("shape_property_descriptors.csv")
 
-data_path = Path("../ShapeDatabase_INFOMR")
+database_path = Path("../ShapeDatabase_INFOMR")
 query_path = Path("../ShapeDatabase_INFOMR/Hat/m1629.obj")
 
-mesh = rd.process_single_mesh(query_path, data_path)
+pre_normal_mesh = tr.load(query_path, force="mesh", process=False)
 
-rd.show_mesh(mesh, query_path)
+MMRU.show_mesh(pre_normal_mesh, query_path)
+
+info, mesh = MMRU.process_single_mesh(query_path)
+
+print(info)
+
+if mesh != None:
+    MMRU.show_mesh(mesh, query_path)

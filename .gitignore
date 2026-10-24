@@ -233,3 +233,6 @@ __pycache__/
 
 # Jupyter
 .ipynb_checkpoints/
+
+# csv files
+.csv
