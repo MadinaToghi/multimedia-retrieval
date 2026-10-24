@@ -8,7 +8,7 @@ from pathlib import Path
 # First step: Prepare your data
 
 data_path = Path(
-    r"C:\Users\madin\Documents\multimedia-retrieval\ShapeDatabase_INFOMR_normalized_cleaned"
+    "../ShapeDatabase_INFOMR_normalized_cleaned"
 )
 
 obj_files = sorted(data_path.rglob("*.obj"))

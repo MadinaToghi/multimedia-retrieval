@@ -10,12 +10,12 @@ from pathlib import Path
 
 # Original database
 original_path = Path(
-    r"C:\Users\madin\Documents\ShapeDatabase_INFOMR"
+    "../ShapeDatabase_INFOMR"
 )
 
 # Normalized database
 normalized_path = Path(
-    r"C:\Users\madin\Documents\multimedia-retrieval\ShapeDatabase_INFOMR_normalized_cleaned"
+    "../ShapeDatabase_INFOMR_normalized_cleaned"
 )
 
 # Keep this for your global descriptor calculations
@@ -209,11 +209,11 @@ import trimesh as tr
 
 # Correct database paths
 original_path = Path(
-    r"C:\Users\madin\Documents\ShapeDatabase_INFOMR"
+    "../ShapeDatabase_INFOMR"
 )
 
 normalized_path = Path(
-    r"C:\Users\madin\Documents\multimedia-retrieval\ShapeDatabase_INFOMR_normalized"
+    "../ShapeDatabase_INFOMR_normalized_cleaned"
 )
 
 object_name = "D00063.obj"
