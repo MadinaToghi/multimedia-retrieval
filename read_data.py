@@ -569,7 +569,7 @@ for label,row in representative_shapes:
 """
 
 output_root = Path(
-    r"C:\Users\madin\Documents\multimedia-retrieval\ShapeDatabase_INFOMR_normalized_cleaned"
+    "../ShapeDatabase_INFOMR_normalized_cleaned"
 )
 normalize_sample_files(sample_files, data_path, output_root)
 plot_normalization_results(output_root / "normalization_log.csv")
