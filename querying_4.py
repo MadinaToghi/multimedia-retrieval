@@ -67,23 +67,59 @@ vertices = q_mesh.vertices
 
 # Calculate the D1 descriptor
 q_D1 = mmru.D1_descriptor(vertices, N)
-   
+q_D1_hist, _ = np.histogram(q_D1, bins = B, density=True)
+
+
 # Calculate the D2 descriptor
 q_D2 = mmru.D2_descriptor(vertices, N)
+q_D2_hist, _ = np.histogram(q_D2, bins = B, density=True)
     
 # Calculate the D3 descriptor
 q_D3 = mmru.D3_descriptor(vertices, N)
-    
+q_D3_hist, _ = np.histogram(q_D3, bins=B, density=True)
+
 # Calculate the D4 descriptor
 q_D4 = mmru.D4_descriptor(vertices, N)
+q_D4_hist, _ = np.histogram(q_D4, bins=B, density=True)
     
 # Calculate the A3 descriptor
 q_A3 = mmru.A3_descriptor(vertices, N)
+q_A3_hist, _ = np.histogram(q_A3, bins= B, density=True)
 
 distances = []
-#"""
+
 for row in df_property.itertuples():
     name = row.File
+
+    r_D1 = [row.D1_bin_0, row.D1_bin_1, row.D1_bin_2, row.D1_bin_3, row.D1_bin_4, 
+            row.D1_bin_5, row.D1_bin_6, row.D1_bin_7, row.D1_bin_8, row.D1_bin_9,
+            row.D1_bin_10,row.D1_bin_11,row.D1_bin_12,row.D1_bin_13,row.D1_bin_14,
+            row.D1_bin_15,row.D1_bin_16,row.D1_bin_17,row.D1_bin_18,row.D1_bin_19,
+            row.D1_bin_20,row.D1_bin_21,row.D1_bin_22,row.D1_bin_23,row.D1_bin_24]
+
+    r_D2 = [row.D2_bin_0, row.D2_bin_1, row.D2_bin_2, row.D2_bin_3, row.D2_bin_4, 
+            row.D2_bin_5, row.D2_bin_6, row.D2_bin_7, row.D2_bin_8, row.D2_bin_9,
+            row.D2_bin_10,row.D2_bin_11,row.D2_bin_12,row.D2_bin_13,row.D2_bin_14,
+            row.D2_bin_15,row.D2_bin_16,row.D2_bin_17,row.D2_bin_18,row.D2_bin_19,
+            row.D2_bin_20,row.D2_bin_21,row.D2_bin_22,row.D2_bin_23,row.D2_bin_24]
+
+    r_D3 = [row.D3_bin_0, row.D3_bin_1, row.D3_bin_2, row.D3_bin_3, row.D3_bin_4, 
+            row.D3_bin_5, row.D3_bin_6, row.D3_bin_7, row.D3_bin_8, row.D3_bin_9,
+            row.D3_bin_10,row.D3_bin_11,row.D3_bin_12,row.D3_bin_13,row.D3_bin_14,
+            row.D3_bin_15,row.D3_bin_16,row.D3_bin_17,row.D3_bin_18,row.D3_bin_19,
+            row.D3_bin_20,row.D3_bin_21,row.D3_bin_22,row.D3_bin_23,row.D3_bin_24]
+    
+    r_D4 = [row.D4_bin_0, row.D4_bin_1, row.D2_bin_2, row.D4_bin_3, row.D4_bin_4, 
+            row.D4_bin_5, row.D4_bin_6, row.D2_bin_7, row.D4_bin_8, row.D4_bin_9,
+            row.D4_bin_10,row.D4_bin_11,row.D2_bin_12,row.D4_bin_13,row.D4_bin_14,
+            row.D4_bin_15,row.D4_bin_16,row.D2_bin_17,row.D4_bin_18,row.D4_bin_19,
+            row.D4_bin_20,row.D4_bin_21,row.D2_bin_22,row.D4_bin_23,row.D4_bin_24]
+    
+    r_A3 = [row.A3_bin_0, row.A3_bin_1, row.A3_bin_2, row.A3_bin_3, row.A3_bin_4, 
+            row.A3_bin_5, row.A3_bin_6, row.A3_bin_7, row.A3_bin_8, row.A3_bin_9,
+            row.A3_bin_10,row.A3_bin_11,row.A3_bin_12,row.A3_bin_13,row.A3_bin_14,
+            row.A3_bin_15,row.A3_bin_16,row.A3_bin_17,row.A3_bin_18,row.A3_bin_19,
+            row.A3_bin_20,row.A3_bin_21,row.A3_bin_22,row.A3_bin_23,row.A3_bin_24]
 
     volume_dis = (np.sqrt(np.square(q_volume - row.Volume)))
     surf_area_dis = (np.sqrt(np.square(q_surface_area - row.Surface_Area)))
@@ -104,6 +140,9 @@ distances.sort(key=itemgetter(1))
 for object in distances[0:5]:
     object_name = object[0]
     print(object_name)
+
+
+
 """
     mesh_path = next(database_path.rglob(object_name), None)
     print(mesh_path)
