@@ -6,6 +6,12 @@ import MMR_utility as mmru
 import trimesh as tr
 import math
 from operator import itemgetter
+from scipy.stats import wasserstein_distance
+import random
+
+from vedo import Mesh, show
+
+data_path = Path("../ShapeDatabase_INFOMR_normalized_cleaned")
 
 # Random number of samples
 N = 10000
@@ -25,9 +31,6 @@ df_property  = df_global_property.merge(df_shape_property, on='File')
 
 df_property = df_property.rename(columns={"Surface Area" : "Surface_Area"})
 
-
-
-database_path = Path("../ShapeDatabase_INFOMR_normalized_clean")
 query_path = Path("../ShapeDatabase_INFOMR/Hat/m1629.obj")
 
 pre_normal_mesh = tr.load(query_path, force="mesh", process=False)
@@ -69,7 +72,6 @@ vertices = q_mesh.vertices
 q_D1 = mmru.D1_descriptor(vertices, N)
 q_D1_hist, _ = np.histogram(q_D1, bins = B, density=True)
 
-
 # Calculate the D2 descriptor
 q_D2 = mmru.D2_descriptor(vertices, N)
 q_D2_hist, _ = np.histogram(q_D2, bins = B, density=True)
@@ -87,6 +89,25 @@ q_A3 = mmru.A3_descriptor(vertices, N)
 q_A3_hist, _ = np.histogram(q_A3, bins= B, density=True)
 
 distances = []
+
+
+wvol = 1
+wsuar = 1
+wcomp = 1
+wrec = 1
+wdia = 1
+wcvx = 1
+wacc = 1
+
+wd1 = 1
+wd2 = 1
+wd3 = 1
+wd4 = 1
+wa3 = 1
+
+
+
+
 
 for row in df_property.itertuples():
     name = row.File
@@ -129,7 +150,15 @@ for row in df_property.itertuples():
     convex_dis = (np.sqrt(np.square(q_convexity - row.Convexity)))
     ecc_dis = (np.sqrt(np.square(q_eccentricity - row.Eccentricity)))
 
-    obj_dis = volume_dis + surf_area_dis + compact_dis + rect_dis + diam_dis + convex_dis + ecc_dis
+
+    # Wasserstein distance = earth mover distance
+    D1_dis = wasserstein_distance(q_D1_hist, r_D1)
+    D2_dis = wasserstein_distance(q_D2_hist, r_D2)
+    D3_dis = wasserstein_distance(q_D3_hist, r_D3)
+    D4_dis = wasserstein_distance(q_D4_hist, r_D4)
+    A3_dis = wasserstein_distance(q_A3_hist, r_A3)
+
+    obj_dis = volume_dis + surf_area_dis + compact_dis + rect_dis + diam_dis + convex_dis + ecc_dis + D1_dis + D2_dis + D3_dis + D4_dis + A3_dis
 
     distances.append([name, obj_dis])
 
@@ -137,18 +166,14 @@ for row in df_property.itertuples():
 
 distances.sort(key=itemgetter(1))
 
-for object in distances[0:5]:
+for object in distances[0:10]:
     object_name = object[0]
     print(object_name)
 
 
-
-"""
-    mesh_path = next(database_path.rglob(object_name), None)
-    print(mesh_path)
+# Find the file in any class folder
+    mesh_path = next(data_path.rglob(object_name), None)
     
-
-   
 
     if mesh_path is not None:
         mesh = tr.load(mesh_path, force="mesh", process=False)
