@@ -52,7 +52,6 @@ if not np.isfinite(q_volume) or np.isclose(q_volume, 0):
 
 q_surface_area = mmru.surface_area(q_mesh)
 
-
 q_compactness = mmru.compactness(q_mesh)
 
 q_rectangularity = mmru.rectangularity(q_mesh)
@@ -63,30 +62,55 @@ q_convexity = mmru.convexity(q_mesh)
 
 q_eccentricity = mmru.eccentricity(q_mesh)
 
+df_min_max = pd.read_csv("min_max_property_descriptors.csv")
+min_max = df_min_max.iloc[0]
 
+print(min_max["D1_min"])
 
 # shape properties query object
 vertices = q_mesh.vertices
 
 # Calculate the D1 descriptor
 q_D1 = mmru.D1_descriptor(vertices, N)
-q_D1_hist, _ = np.histogram(q_D1, bins = B, density=True)
+
+D1_min = min(min_max["D1_min"], min(q_D1))
+D1_max = max(min_max["D1_max"], max(q_D1))
+
+D1_bin_edges = np.linspace(D1_min, D1_max, B + 1)
+q_D1_hist, _ = np.histogram(q_D1, bins = D1_bin_edges, density=True)
 
 # Calculate the D2 descriptor
 q_D2 = mmru.D2_descriptor(vertices, N)
-q_D2_hist, _ = np.histogram(q_D2, bins = B, density=True)
+
+D2_min = min(min_max["D2_min"], min(q_D2))
+D2_max = max(min_max["D2_max"], max(q_D2))
+
+D2_bin_edges = np.linspace(D2_min, D2_max, B + 1)
+q_D2_hist, _ = np.histogram(q_D2, bins = D2_bin_edges, density=True)
     
 # Calculate the D3 descriptor
 q_D3 = mmru.D3_descriptor(vertices, N)
-q_D3_hist, _ = np.histogram(q_D3, bins=B, density=True)
+
+D3_min = min(min_max["D3_min"], min(q_D3))
+D3_max = max(min_max["D3_max"], max(q_D3))
+
+D3_bin_edges = np.linspace(D3_min, D3_max, B + 1)
+q_D3_hist, _ = np.histogram(q_D3, bins=D3_bin_edges, density=True)
 
 # Calculate the D4 descriptor
 q_D4 = mmru.D4_descriptor(vertices, N)
+D4_min = min(min_max["D4_min"], min(q_D4))
+D4_max = max(min_max["D4_max"], max(q_D4))
+
+D4_bin_edges = np.linspace(D4_min, D4_max, B + 1)
 q_D4_hist, _ = np.histogram(q_D4, bins=B, density=True)
     
 # Calculate the A3 descriptor
 q_A3 = mmru.A3_descriptor(vertices, N)
-q_A3_hist, _ = np.histogram(q_A3, bins= B, density=True)
+A3_bin_edges = np.linspace(0, np.pi, B + 1)  # Create B bins between min and max distances
+
+q_A3_hist, _ = np.histogram(q_A3, bins= A3_bin_edges, density=True)
+
 
 distances = []
 
@@ -97,15 +121,13 @@ wcomp = 1
 wrec = 1
 wdia = 1
 wcvx = 1
-wacc = 1
+wecc = 1
 
 wd1 = 1
 wd2 = 1
 wd3 = 1
 wd4 = 1
 wa3 = 1
-
-
 
 
 
@@ -158,7 +180,7 @@ for row in df_property.itertuples():
     D4_dis = wasserstein_distance(q_D4_hist, r_D4)
     A3_dis = wasserstein_distance(q_A3_hist, r_A3)
 
-    obj_dis = volume_dis + surf_area_dis + compact_dis + rect_dis + diam_dis + convex_dis + ecc_dis + D1_dis + D2_dis + D3_dis + D4_dis + A3_dis
+    obj_dis = wvol * volume_dis + wsuar * surf_area_dis + wcomp * compact_dis + wrec * rect_dis + wdia * diam_dis + wcvx * convex_dis + wecc * ecc_dis + wd1 * D1_dis + wd2 * D2_dis + wd3 * D3_dis + wd4 * D4_dis + wa3 * A3_dis
 
     distances.append([name, obj_dis])
 

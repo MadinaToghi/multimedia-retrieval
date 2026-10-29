@@ -310,6 +310,22 @@ D4_max = max(max(distances) for distances in all_D4.values())
 
 A3_min = min(min(distances) for distances in all_A3.values())
 A3_max = max(max(distances) for distances in all_A3.values())
+
+min_max_rows = {
+    "D1_min": [D1_min_distance],
+    "D1_max": [D1_max_distance],
+    "D2_min": [D2_min_distance],
+    "D2_max": [D2_max_distance],
+    "D3_min": [D3_min],
+    "D3_max": [D3_max],
+    "D4_min": [D4_min],
+    "D4_max": [D4_max],
+    "A3_min": [A3_min],
+    "A3_max": [A3_max]
+}
+
+df_min_max = pd.DataFrame(min_max_rows)
+df_min_max.to_csv("min_max_property_descriptors.csv", index=False)
     
 # Use fixed bin edges for all histograms!
 D2_bin_edges = np.linspace(D2_min_distance, D2_max_distance, B + 1)  # Create B bins between min and max distances
