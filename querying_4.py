@@ -1,25 +1,19 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from pathlib import Path
 import MMR_utility as mmru
 import trimesh as tr
-import math
-from operator import itemgetter
 from scipy.stats import wasserstein_distance
-import random
-
-from vedo import Mesh, show
 
 data_path = Path("../ShapeDatabase_INFOMR_normalized_cleaned")
 
 # Random number of samples
 N = 10000
 
-# Number of Bins
+# Number of bins
 B = 25
-
-    # Step 2: Calculate the five descriptors
 
 np.random.seed(42)
 
@@ -27,94 +21,61 @@ df_global_property = pd.read_csv("shape_descriptors_cleaned.csv")
 df_shape_property = pd.read_csv("shape_property_descriptors.csv")
 
 df_shape_property = df_shape_property.drop(columns=["Class"])
-df_property  = df_global_property.merge(df_shape_property, on='File')
+df_property = df_global_property.merge(df_shape_property, on="File")
+df_property = df_property.rename(columns={"Surface Area": "Surface_Area"})
 
-df_property = df_property.rename(columns={"Surface Area" : "Surface_Area"})
-
-query_path = Path("../ShapeDatabase_INFOMR/Hat/m1629.obj")
-
-pre_normal_mesh = tr.load(query_path, force="mesh", process=False)
-
-mmru.show_mesh(pre_normal_mesh, query_path)
-
+query_path = Path("../ShapeDatabase_INFOMR_normalized_cleaned/Bottle/D00139.obj")
 info, q_mesh = mmru.process_single_mesh(query_path)
 
+if q_mesh is None:
+    raise ValueError(f"Could not process query mesh: {query_path}")
 
-if q_mesh != None:
-    mmru.show_mesh(q_mesh, query_path)
-
-# Global descriptors query object
+# Global descriptors for the query object.
 q_volume = abs(q_mesh.volume)
-
 if not np.isfinite(q_volume) or np.isclose(q_volume, 0):
-    print("Invalid or near-zero volume")
-
+    raise ValueError(f"Query mesh has invalid or near-zero volume: {query_path}")
 
 q_surface_area = mmru.surface_area(q_mesh)
-
 q_compactness = mmru.compactness(q_mesh)
-
 q_rectangularity = mmru.rectangularity(q_mesh)
-
 q_diameter = mmru.diameter(q_mesh)
-
 q_convexity = mmru.convexity(q_mesh)
-
 q_eccentricity = mmru.eccentricity(q_mesh)
 
 df_min_max = pd.read_csv("min_max_property_descriptors.csv")
 min_max = df_min_max.iloc[0]
-
-print(min_max["D1_min"])
-
-# shape properties query object
 vertices = q_mesh.vertices
 
-# Calculate the D1 descriptor
+# Calculate query histograms using the same bin ranges as the stored descriptors.
 q_D1 = mmru.D1_descriptor(vertices, N)
-
 D1_min = min(min_max["D1_min"], min(q_D1))
 D1_max = max(min_max["D1_max"], max(q_D1))
-
 D1_bin_edges = np.linspace(D1_min, D1_max, B + 1)
-q_D1_hist, _ = np.histogram(q_D1, bins = D1_bin_edges, density=True)
+q_D1_hist, _ = np.histogram(q_D1, bins=D1_bin_edges, density=True)
 
-# Calculate the D2 descriptor
 q_D2 = mmru.D2_descriptor(vertices, N)
-
 D2_min = min(min_max["D2_min"], min(q_D2))
 D2_max = max(min_max["D2_max"], max(q_D2))
-
 D2_bin_edges = np.linspace(D2_min, D2_max, B + 1)
-q_D2_hist, _ = np.histogram(q_D2, bins = D2_bin_edges, density=True)
-    
-# Calculate the D3 descriptor
-q_D3 = mmru.D3_descriptor(vertices, N)
+q_D2_hist, _ = np.histogram(q_D2, bins=D2_bin_edges, density=True)
 
+q_D3 = mmru.D3_descriptor(vertices, N)
 D3_min = min(min_max["D3_min"], min(q_D3))
 D3_max = max(min_max["D3_max"], max(q_D3))
-
 D3_bin_edges = np.linspace(D3_min, D3_max, B + 1)
 q_D3_hist, _ = np.histogram(q_D3, bins=D3_bin_edges, density=True)
 
-# Calculate the D4 descriptor
 q_D4 = mmru.D4_descriptor(vertices, N)
 D4_min = min(min_max["D4_min"], min(q_D4))
 D4_max = max(min_max["D4_max"], max(q_D4))
-
 D4_bin_edges = np.linspace(D4_min, D4_max, B + 1)
-q_D4_hist, _ = np.histogram(q_D4, bins=B, density=True)
-    
-# Calculate the A3 descriptor
+q_D4_hist, _ = np.histogram(q_D4, bins=D4_bin_edges, density=True)
+
 q_A3 = mmru.A3_descriptor(vertices, N)
-A3_bin_edges = np.linspace(0, np.pi, B + 1)  # Create B bins between min and max distances
+A3_bin_edges = np.linspace(0, np.pi, B + 1)
+q_A3_hist, _ = np.histogram(q_A3, bins=A3_bin_edges, density=True)
 
-q_A3_hist, _ = np.histogram(q_A3, bins= A3_bin_edges, density=True)
-
-
-distances = []
-
-
+# Descriptor weights used both in ranking and in the comparison table.
 wvol = 1
 wsuar = 1
 wcomp = 1
@@ -122,87 +83,188 @@ wrec = 1
 wdia = 1
 wcvx = 1
 wecc = 1
-
 wd1 = 1
 wd2 = 1
 wd3 = 1
 wd4 = 1
 wa3 = 1
 
+weights = {
+    "Volume": wvol,
+    "Surface Area": wsuar,
+    "Compactness": wcomp,
+    "Rectangularity": wrec,
+    "Diameter": wdia,
+    "Convexity": wcvx,
+    "Eccentricity": wecc,
+    "D1": wd1,
+    "D2": wd2,
+    "D3": wd3,
+    "D4": wd4,
+    "A3": wa3,
+}
 
+query_values = {
+    "Volume": q_volume,
+    "Surface Area": q_surface_area,
+    "Compactness": q_compactness,
+    "Rectangularity": q_rectangularity,
+    "Diameter": q_diameter,
+    "Convexity": q_convexity,
+    "Eccentricity": q_eccentricity,
+    "D1": "25-bin histogram",
+    "D2": "25-bin histogram",
+    "D3": "25-bin histogram",
+    "D4": "25-bin histogram",
+    "A3": "25-bin histogram",
+}
 
-for row in df_property.itertuples():
-    name = row.File
+query_histograms = {
+    "D1": q_D1_hist,
+    "D2": q_D2_hist,
+    "D3": q_D3_hist,
+    "D4": q_D4_hist,
+    "A3": q_A3_hist,
+}
 
-    r_D1 = [row.D1_bin_0, row.D1_bin_1, row.D1_bin_2, row.D1_bin_3, row.D1_bin_4, 
-            row.D1_bin_5, row.D1_bin_6, row.D1_bin_7, row.D1_bin_8, row.D1_bin_9,
-            row.D1_bin_10,row.D1_bin_11,row.D1_bin_12,row.D1_bin_13,row.D1_bin_14,
-            row.D1_bin_15,row.D1_bin_16,row.D1_bin_17,row.D1_bin_18,row.D1_bin_19,
-            row.D1_bin_20,row.D1_bin_21,row.D1_bin_22,row.D1_bin_23,row.D1_bin_24]
+distances = []
+for row in df_property.itertuples(index=False):
+    candidate_values = {
+        "Volume": row.Volume,
+        "Surface Area": row.Surface_Area,
+        "Compactness": row.Compactness,
+        "Rectangularity": row.Rectangularity,
+        "Diameter": row.Diameter,
+        "Convexity": row.Convexity,
+        "Eccentricity": row.Eccentricity,
+    }
 
-    r_D2 = [row.D2_bin_0, row.D2_bin_1, row.D2_bin_2, row.D2_bin_3, row.D2_bin_4, 
-            row.D2_bin_5, row.D2_bin_6, row.D2_bin_7, row.D2_bin_8, row.D2_bin_9,
-            row.D2_bin_10,row.D2_bin_11,row.D2_bin_12,row.D2_bin_13,row.D2_bin_14,
-            row.D2_bin_15,row.D2_bin_16,row.D2_bin_17,row.D2_bin_18,row.D2_bin_19,
-            row.D2_bin_20,row.D2_bin_21,row.D2_bin_22,row.D2_bin_23,row.D2_bin_24]
+    volume_dis = abs(q_volume - row.Volume)
+    surf_area_dis = abs(q_surface_area - row.Surface_Area)
+    compact_dis = abs(q_compactness - row.Compactness)
+    rect_dis = abs(q_rectangularity - row.Rectangularity)
+    diam_dis = abs(q_diameter - row.Diameter)
+    convex_dis = abs(q_convexity - row.Convexity)
+    ecc_dis = abs(q_eccentricity - row.Eccentricity)
 
-    r_D3 = [row.D3_bin_0, row.D3_bin_1, row.D3_bin_2, row.D3_bin_3, row.D3_bin_4, 
-            row.D3_bin_5, row.D3_bin_6, row.D3_bin_7, row.D3_bin_8, row.D3_bin_9,
-            row.D3_bin_10,row.D3_bin_11,row.D3_bin_12,row.D3_bin_13,row.D3_bin_14,
-            row.D3_bin_15,row.D3_bin_16,row.D3_bin_17,row.D3_bin_18,row.D3_bin_19,
-            row.D3_bin_20,row.D3_bin_21,row.D3_bin_22,row.D3_bin_23,row.D3_bin_24]
-    
-    r_D4 = [row.D4_bin_0, row.D4_bin_1, row.D2_bin_2, row.D4_bin_3, row.D4_bin_4, 
-            row.D4_bin_5, row.D4_bin_6, row.D2_bin_7, row.D4_bin_8, row.D4_bin_9,
-            row.D4_bin_10,row.D4_bin_11,row.D2_bin_12,row.D4_bin_13,row.D4_bin_14,
-            row.D4_bin_15,row.D4_bin_16,row.D2_bin_17,row.D4_bin_18,row.D4_bin_19,
-            row.D4_bin_20,row.D4_bin_21,row.D2_bin_22,row.D4_bin_23,row.D4_bin_24]
-    
-    r_A3 = [row.A3_bin_0, row.A3_bin_1, row.A3_bin_2, row.A3_bin_3, row.A3_bin_4, 
-            row.A3_bin_5, row.A3_bin_6, row.A3_bin_7, row.A3_bin_8, row.A3_bin_9,
-            row.A3_bin_10,row.A3_bin_11,row.A3_bin_12,row.A3_bin_13,row.A3_bin_14,
-            row.A3_bin_15,row.A3_bin_16,row.A3_bin_17,row.A3_bin_18,row.A3_bin_19,
-            row.A3_bin_20,row.A3_bin_21,row.A3_bin_22,row.A3_bin_23,row.A3_bin_24]
+    histogram_distances = {}
+    for descriptor in query_histograms:
+        candidate_histogram = [
+            getattr(row, f"{descriptor}_bin_{index}") for index in range(B)
+        ]
+        histogram_distances[descriptor] = wasserstein_distance(
+            query_histograms[descriptor], candidate_histogram
+        )
 
-    volume_dis = (np.sqrt(np.square(q_volume - row.Volume)))
-    surf_area_dis = (np.sqrt(np.square(q_surface_area - row.Surface_Area)))
-    compact_dis = (np.sqrt(np.square(q_compactness - row.Compactness)))
-    rect_dis = (np.sqrt(np.square(q_rectangularity - row.Rectangularity)))
-    diam_dis = (np.sqrt(np.square(q_diameter - row.Diameter)))
-    convex_dis = (np.sqrt(np.square(q_convexity - row.Convexity)))
-    ecc_dis = (np.sqrt(np.square(q_eccentricity - row.Eccentricity)))
+    descriptor_distances = {
+        "Volume": volume_dis,
+        "Surface Area": surf_area_dis,
+        "Compactness": compact_dis,
+        "Rectangularity": rect_dis,
+        "Diameter": diam_dis,
+        "Convexity": convex_dis,
+        "Eccentricity": ecc_dis,
+        **histogram_distances,
+    }
 
+    weighted_distances = {
+        descriptor: weights[descriptor] * distance
+        for descriptor, distance in descriptor_distances.items()
+    }
+    distances.append({
+        "name": row.File,
+        "score": sum(weighted_distances.values()),
+        "values": candidate_values,
+        "weighted_distances": weighted_distances,
+    })
 
-    # Wasserstein distance = earth mover distance
-    D1_dis = wasserstein_distance(q_D1_hist, r_D1)
-    D2_dis = wasserstein_distance(q_D2_hist, r_D2)
-    D3_dis = wasserstein_distance(q_D3_hist, r_D3)
-    D4_dis = wasserstein_distance(q_D4_hist, r_D4)
-    A3_dis = wasserstein_distance(q_A3_hist, r_A3)
+distances.sort(key=lambda result: result["score"])
+top_matches = distances[:5]
 
-    obj_dis = wvol * volume_dis + wsuar * surf_area_dis + wcomp * compact_dis + wrec * rect_dis + wdia * diam_dis + wcvx * convex_dis + wecc * ecc_dis + wd1 * D1_dis + wd2 * D2_dis + wd3 * D3_dis + wd4 * D4_dis + wa3 * A3_dis
+# Load the query and closest meshes for the single comparison window.
+query_category = query_path.parent.name
+mesh_results = [{
+    "label": f"Query ({query_category}): {query_path.name}",
+    "mesh": q_mesh,
+}]
+for rank, result in enumerate(top_matches, start=1):
+    mesh_path = next(data_path.rglob(result["name"]), None)
+    if mesh_path is None:
+        raise FileNotFoundError(
+            f"Could not retrieve matching mesh {result['name']} under {data_path}"
+        )
 
-    distances.append([name, obj_dis])
+    result["category"] = mesh_path.parent.name
+    result["mesh"] = tr.load(mesh_path, force="mesh", process=False)
+    mesh_results.append({
+        "label": f"#{rank} ({result['category']}): {result['name']}",
+        "mesh": result["mesh"],
+    })
 
+fig = plt.figure(figsize=(20, 15))
+grid = fig.add_gridspec(3, 3, height_ratios=(1, 1, 1.5))
+mesh_axes = [
+    fig.add_subplot(grid[row, column], projection="3d")
+    for row in range(2)
+    for column in range(3)
+]
 
+for ax, result in zip(mesh_axes, mesh_results):
+    mesh = result["mesh"]
+    ax.add_collection3d(Poly3DCollection(
+        mesh.vertices[mesh.faces],
+        facecolor="lightblue",
+        edgecolor="black",
+        linewidth=0.1,
+    ))
+    center = mesh.bounds.mean(axis=0)
+    radius = max(np.ptp(mesh.bounds, axis=0).max() / 2, 1e-6)
+    ax.set_xlim(center[0] - radius, center[0] + radius)
+    ax.set_ylim(center[1] - radius, center[1] + radius)
+    ax.set_zlim(center[2] - radius, center[2] + radius)
+    ax.set_title(result["label"])
+    ax.set_axis_off()
 
-distances.sort(key=itemgetter(1))
+table_ax = fig.add_subplot(grid[2, :])
+table_ax.axis("off")
+table_rows = []
+histogram_descriptors = {"D1", "D2", "D3", "D4", "A3"}
+for descriptor in weights:
+    query_value = query_values[descriptor]
+    row_values = [
+        descriptor,
+        query_value if descriptor in histogram_descriptors else f"{query_value:.6g}",
+    ]
+    for result in top_matches:
+        weighted_distance = result["weighted_distances"][descriptor]
+        if descriptor in histogram_descriptors:
+            row_values.append(f"weighted distance: {weighted_distance:.6g}")
+        else:
+            row_values.append(
+                f"value: {result['values'][descriptor]:.6g}\n"
+                f"weighted distance: {weighted_distance:.6g}"
+            )
+    table_rows.append(row_values)
 
-for object in distances[0:10]:
-    object_name = object[0]
-    print(object_name)
+table = table_ax.table(
+    cellText=table_rows,
+    colLabels=["Descriptor", "Query"] + [
+        f"#{rank} {result['name']} ({result['category']})"
+        for rank, result in enumerate(top_matches, start=1)
+    ],
+    cellLoc="center",
+    loc="center",
+    colWidths=[0.13, 0.17] + [0.14] * len(top_matches),
+)
+for column, result in enumerate(top_matches, start=2):
+    if result["category"] == query_category:
+        for row in range(len(table_rows) + 1):
+            table[(row, column)].set_facecolor("#c6efce")
 
+table.auto_set_font_size(False)
+table.set_fontsize(8)
+table.scale(1, 2)
 
-# Find the file in any class folder
-    mesh_path = next(data_path.rglob(object_name), None)
-    
-
-    if mesh_path is not None:
-        mesh = tr.load(mesh_path, force="mesh", process=False)
-
-        mmru.show_mesh(mesh, mesh_path)
-
-    else:
-        print("cant retrieve object: " + object_name)
-
-#"""
+fig.suptitle(f"Query and five closest meshes: {query_path.name}")
+fig.tight_layout(rect=(0, 0, 1, 0.97))
+plt.show()
