@@ -17,7 +17,7 @@ B = 25
 
 np.random.seed(42)
 
-df_global_property = pd.read_csv("shape_descriptors_cleaned.csv")
+df_global_property = pd.read_csv("standardized_global_descriptors.csv")
 df_shape_property = pd.read_csv("shape_property_descriptors.csv")
 
 df_shape_property = df_shape_property.drop(columns=["Class"])
@@ -31,16 +31,33 @@ if q_mesh is None:
     raise ValueError(f"Could not process query mesh: {query_path}")
 
 # Global descriptors for the query object.
+df_mean_std = pd.read_csv("Mean_Std_Dev_Values.csv")
+mean_std = df_mean_std.iloc[0]
+
 q_volume = abs(q_mesh.volume)
 if not np.isfinite(q_volume) or np.isclose(q_volume, 0):
     raise ValueError(f"Query mesh has invalid or near-zero volume: {query_path}")
 
+else:
+    q_volume = (q_volume - mean_std["Volume Mean"]) / mean_std["Volume Std_Dev"]
+
 q_surface_area = mmru.surface_area(q_mesh)
+q_surface_area = (q_surface_area - mean_std["Surface Area Mean"] ) / mean_std["Surface Area Std_Dev"]
+
 q_compactness = mmru.compactness(q_mesh)
+q_compactness = (q_compactness - mean_std["Compactness Mean"]) / mean_std["Compactness Std_Dev"]
+
 q_rectangularity = mmru.rectangularity(q_mesh)
+q_rectangularity = (q_rectangularity - mean_std["Rectangularity Mean"]) / mean_std["Rectangularity Std_Dev"]
+
 q_diameter = mmru.diameter(q_mesh)
+q_diameter = (q_diameter - mean_std["Diameter Mean"]) / mean_std["Diameter Std_Dev"]
+
 q_convexity = mmru.convexity(q_mesh)
+q_convexity = (q_convexity - mean_std["Convexity Mean"]) / mean_std["Convexity Std_Dev"]
+
 q_eccentricity = mmru.eccentricity(q_mesh)
+q_eccentricity = (q_eccentricity - mean_std["Eccentricity Mean"])/ mean_std["Eccentricity Std_Dev"]
 
 df_min_max = pd.read_csv("min_max_property_descriptors.csv")
 min_max = df_min_max.iloc[0]
