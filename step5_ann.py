@@ -1,5 +1,15 @@
 # python step5_ann.py
 
+# Step 5: Spatial Search using the Approximate Nearest Neighbor (ANN) library
+#
+# This script:
+# 1. Loads the compiled C++ ANN library using ctypes.
+# 2. Loads the feature vectors from the normalized feature database.
+# 3. Builds a KD-tree to accelerate nearest-neighbor searching.
+# 4. Retrieves the K nearest shapes for a given query shape.
+# 5. Validates ANN results against brute-force Euclidean distance.
+# 6. Saves retrieval results to a CSV file for later visualization and comparison.
+
 import ctypes
 from pathlib import Path
 
@@ -20,7 +30,7 @@ df = pd.read_csv(data_path)
 
 feature_columns = df.columns.drop(['File', 'Class'])
 
-# Ensures all elements are stored in a contiguous block of memory, which is required for passing to C functions
+# Convert the feature matrix to a contiguous NumPy array of type float64 for compatibility with the C++ library
 X = np.ascontiguousarray(
     df[feature_columns].to_numpy(dtype=np.float64)
 )
@@ -39,9 +49,12 @@ if n_shapes < 2:
 
 # Configure the C++ interface
 
+# Define pointer types for the C++ functions
 double_ptr = ctypes.POINTER(ctypes.c_double)
 int_ptr = ctypes.POINTER(ctypes.c_int)
 
+# Define the argument and return types for building the ANN index 
+# The C++ function expects:
 c_lib.build_ann_index.argtypes = [
     double_ptr, # Pointer to the feature matrix
     ctypes.c_int, # Number of shapes (rows)
@@ -51,6 +64,9 @@ c_lib.build_ann_index.argtypes = [
 c_lib.build_ann_index.restype = ctypes.c_void_p # Returns a pointer to the ANN index
 
 # K-nearest neighbors search function signature
+# The C++ function receives the ANN index, query vector,
+# number of neighbors, approximation parameter,
+# and arrays for storing the retrieved indices and distances.
 c_lib.knn_search.argtypes = [
     ctypes.c_void_p, # Pointer to the ANN index
     double_ptr, # Pointer to the query vector
@@ -62,7 +78,9 @@ c_lib.knn_search.argtypes = [
 
 c_lib.knn_search.restype = None # No return value, results are written to the provided pointers
 
-# Release allocated C++ memory
+# Define the function used to release allocated C++ memory.
+# The ANN KD-tree is stored in C++ memory and must be freed
+# after all searches are completed.
 c_lib.free_ann_index.argtypes = [
     ctypes.c_void_p
 ]
@@ -71,12 +89,16 @@ c_lib.free_ann_index.restype = None
 
 # Build ANN KD-tree 
 
+# Construct a KD-tree using all feature vectors.
+# The tree organizes the 132-dimensional feature space
+# to support more efficient nearest-neighbor searches.
 ann_index = c_lib.build_ann_index(
     X.ctypes.data_as(double_ptr),
     n_shapes,
     n_features
 )
 
+# Check whether the ANN index was created successfully.
 if not ann_index:
     raise RuntimeError("Failed to build ANN index.")
 
@@ -96,17 +118,18 @@ def knn_search(query_index, k=6, eps=0.0):
            >0.0 = approximate search.
 
     Returns:
-        DataFrame containing filenames, classes and distances.
+        DataFrame containing filenames, classes and distances (Euclidean distance to the query shape).
     """
 
-    # Validate the query index
+    # Check that the query index exists in the database.
     if not 0 <= query_index < n_shapes:
         raise ValueError("Invalid query index.")
 
-    # Validate K
+    # K cannot exceed the number of other shapes in the database.
     if not 1 <= k < n_shapes:
         raise ValueError("K must be between 1 and n_shapes - 1.")
-
+    
+     # The approximation parameter must be a valid non-negative value.
     if eps < 0 or not np.isfinite(eps):
         raise ValueError("eps must be finite and non-negative.")
 
@@ -120,6 +143,8 @@ def knn_search(query_index, k=6, eps=0.0):
     distances = np.empty(count, dtype=np.float64)
 
     # Perform KNN search using the ANN C++ library
+    # The wrapper converts ANN's squared distances to
+    # ordinary Euclidean distances.
     c_lib.knn_search(
         ann_index,
         query_vector.ctypes.data_as(double_ptr),
@@ -129,6 +154,7 @@ def knn_search(query_index, k=6, eps=0.0):
         distances.ctypes.data_as(double_ptr)
     )
 
+    # Store the retrieved shapes and their distances.
     results = []
 
     # Collect the retrieved shapes
@@ -160,6 +186,7 @@ try:
     query_indices = [10, 5, 80, 56, 33] # Adjust based on step 4 choices
     k = 6
 
+    # Store the results of all queries for CSV export.
     all_results = []
 
     for query_index in query_indices:
@@ -174,8 +201,12 @@ try:
 
         results_to_save.insert(0, "Query_File", df.iloc[query_index]["File"])
         results_to_save.insert(1, "Query_Class", df.iloc[query_index]["Class"])
+
+        # Assign a rank to each neighbor, starting at 1.
+        # Rank 1 represents the closest retrieved shape.
         results_to_save.insert(2, "Rank", range(1, len(results_to_save) + 1))
 
+        # Add this query's results to the complete list.
         all_results.append(results_to_save)
 
         print(f"\n{k} nearest neighbors:")
@@ -193,6 +224,7 @@ try:
         # Retrieve the K closest shapes
         expected_indices = np.argsort(all_distances)[:k]
 
+        # Extract filenames from both retrieval methods.
         expected_files = df.iloc[expected_indices]["File"].tolist()
         ann_files = results["File"].tolist()
 
@@ -202,6 +234,8 @@ try:
         print("\nANN nearest neighbors:")
         print(ann_files)
 
+        # Check whether ANN and brute-force search return
+        # the same K shapes in the same order.
         print("\nResults match:", expected_files == ann_files)
 
     # Combine retrieval results from all queries
@@ -213,9 +247,13 @@ try:
     combined_results.to_csv(output_path, index=False)
 
     print(f"\nKNN results saved to: {output_path}")
-    
+
 # Release allocated ANN memory
 
 finally: 
+    # Free the C++ memory used by the ANN KD-tree.
+    # The finally block ensures cleanup even if
+    # an error occurs during retrieval or CSV export.
+    
     c_lib.free_ann_index(ann_index)
     print("\nANN index memory released!")
