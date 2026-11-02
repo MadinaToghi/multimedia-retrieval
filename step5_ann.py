@@ -160,12 +160,23 @@ try:
     query_indices = [10, 5, 80, 56, 33] # Adjust based on step 4 choices
     k = 6
 
+    all_results = []
+
     for query_index in query_indices:
 
         print("\nQuery shape:")
         print(df.iloc[query_index][["File", "Class"]])
 
         results = knn_search(query_index, k=k, eps=0.0)
+
+        # Store query information with retrieval results
+        results_to_save = results.copy()
+
+        results_to_save.insert(0, "Query_File", df.iloc[query_index]["File"])
+        results_to_save.insert(1, "Query_Class", df.iloc[query_index]["Class"])
+        results_to_save.insert(2, "Rank", range(1, len(results_to_save) + 1))
+
+        all_results.append(results_to_save)
 
         print(f"\n{k} nearest neighbors:")
         print(results)
@@ -193,6 +204,16 @@ try:
 
         print("\nResults match:", expected_files == ann_files)
 
+    # Combine retrieval results from all queries
+    combined_results = pd.concat(all_results, ignore_index=True)
+
+    # Save results to CSV
+    output_path = Path(__file__).resolve().parent / "ann_knn_results.csv"
+
+    combined_results.to_csv(output_path, index=False)
+
+    print(f"\nKNN results saved to: {output_path}")
+    
 # Release allocated ANN memory
 
 finally: 
