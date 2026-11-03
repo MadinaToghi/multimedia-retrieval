@@ -24,7 +24,7 @@ df_shape_property = df_shape_property.drop(columns=["Class"])
 df_property = df_global_property.merge(df_shape_property, on="File")
 df_property = df_property.rename(columns={"Surface Area": "Surface_Area"})
 
-query_path = Path("../ShapeDatabase_INFOMR_normalized_cleaned/Bottle/D00139.obj")
+query_path = Path("../ShapeDatabase_INFOMR_normalized_cleaned/AircraftBuoyant/m1347.obj")
 info, q_mesh = mmru.process_single_mesh(query_path)
 
 if q_mesh is None:
@@ -98,18 +98,18 @@ q_A3_hist, _ = np.histogram(q_A3, bins=A3_bin_edges)
 q_A3_hist = q_A3_hist/q_A3_hist.sum()
 
 # Descriptor weights used both in ranking and in the comparison table.
-wvol = 1
+wvol  = 0.7
 wsuar = 1
 wcomp = 1
-wrec = 1
-wdia = 1
-wcvx = 1
-wecc = 1
-wd1 = 1
-wd2 = 1
-wd3 = 1
-wd4 = 1
-wa3 = 1
+wrec  = 1
+wdia  = 0.8
+wcvx  = 0.6
+wecc  = 0.7
+wd1   = 1
+wd2   = 1
+wd3   = 1.3
+wd4   = 0.5
+wa3   = 0.6
 
 weights = {
     "Volume": wvol,
