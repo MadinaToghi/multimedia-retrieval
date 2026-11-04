@@ -51,6 +51,8 @@ X_values = X.to_numpy()
 tsne = TSNE(
     n_components=2,
     perplexity=30,
+    max_iter=1000,
+    n_iter_without_progress=300,
     random_state=42,
     init="pca",
     learning_rate="auto"
@@ -99,7 +101,11 @@ tsne_df = combined_df[["Class", "File"]].copy()
 tsne_df["TSNE_1"] = X_2d[:, 0]
 tsne_df["TSNE_2"] = X_2d[:, 1]
 
-tsne_df.to_csv("tsne_embedding.csv", index=False)
+# tsne_embedding.csv = perplexity 30
+# tsne_embedding_p50.csv = perplexity 50
+# tsne_embedding_p100.csv = perplexity 100
+# tsne_embedding_p30_n_iter300.csv = perplexity = 30, n_iter_without_progress = 300
+tsne_df.to_csv("tsne_embedding_p30_n_iter300.csv", index=False)
 
 print("Saved t-SNE coordinates.")
 
