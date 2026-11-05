@@ -12,13 +12,12 @@ features = df.drop(columns = ['File', 'Class']).to_numpy(dtype=float)
 # Build KD-tree for efficient nearest neighbor search
 kdtree = cKDTree(features)
 
-query_indices = [10, 5, 80, 56, 33]
 r = 1.5 # Search radius
 
 results = []
 
 # K-nearest neighbors search for each query shape
-for query_index in query_indices:
+for query_index in df.index:
 
     query = features[query_index]
 

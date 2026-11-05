@@ -11,12 +11,24 @@ import trimesh
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 project_dir = Path(__file__).resolve().parent
+
 df = pd.read_csv(project_dir / "knn_results.csv")
 
+query_indices = [10, 5, 80, 56]  # Example query indices to visualize
+
 # Folder with all OBJ files
-mesh_dir = project_dir / "ShapeDatabase_INFOMR_normalized_cleaned"
+features_df = pd.read_csv(
+    project_dir / "normalized_combined_descriptors.csv"
+)
 
 # Find all meshes
+query_files = features_df.iloc[query_indices]["File"].tolist()
+
+# Keep only results for these queries
+df = df[df["Query_File"].isin(query_files)]
+
+mesh_dir = project_dir / "ShapeDatabase_INFOMR_normalized_cleaned"
+
 mesh_files = {p.name: p for p in mesh_dir.rglob("*.obj")}
 
 # Group results by query shape
@@ -56,9 +68,9 @@ def draw_mesh(ax, file_name):
         color="red"
     )
 
-    ax.set_xlim(-0.65, 0.65)
-    ax.set_ylim(-0.65, 0.65)
-    ax.set_zlim(-0.65, 0.65)
+    ax.set_xlim(-0.5, 0.5)
+    ax.set_ylim(-0.5, 0.5)
+    ax.set_zlim(-0.5, 0.5)
 
      # Keep all shapes at the same visual scale
     ax.set_axis_off()
@@ -72,7 +84,7 @@ def draw_mesh(ax, file_name):
 # -------------------------
 for row, ((query_file, query_class), group) in enumerate(groups):
 
-    group = group.sort_values("Rank")
+    group = group.sort_values("Rank").head(6)  # Keep only the top 6 neighbors
 
     # First column = query shape
     ax = axes[row,0]

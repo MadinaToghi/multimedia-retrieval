@@ -10,6 +10,20 @@ import trimesh
 project_dir = Path(__file__).resolve().parent
 df = pd.read_csv(project_dir / "rnn_results.csv")
 
+query_indices = [10, 5, 80, 56]  # Example query indices to visualize
+
+# Folder with all OBJ files
+features_df = pd.read_csv(
+    project_dir / "normalized_combined_descriptors.csv"
+)
+
+# Find all meshes
+query_files = features_df.iloc[query_indices]["File"].tolist()
+
+# Keep only results for these queries
+df = df[df["Query_File"].isin(query_files)]
+
+
 # Folder with all OBJ files
 mesh_dir = project_dir / "ShapeDatabase_INFOMR_normalized_cleaned"
 
@@ -62,9 +76,9 @@ def draw_mesh(ax, file_name):
         color="red"
     )
 
-    ax.set_xlim(-0.65, 0.65)
-    ax.set_ylim(-0.65, 0.65)
-    ax.set_zlim(-0.65, 0.65)
+    ax.set_xlim(-0.5, 0.5)
+    ax.set_ylim(-0.5, 0.5)
+    ax.set_zlim(-0.5, 0.5)
 
      # Keep all shapes at the same visual scale
     ax.set_axis_off()
@@ -115,8 +129,6 @@ plt.subplots_adjust(
     right=0.98,
     top=0.92,
     bottom=0.03,
-    wspace=0.05,
-    hspace=0.15
 )
 
 # plt.savefig("ann_rnn_retrieval_table.png")
