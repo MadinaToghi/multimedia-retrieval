@@ -9,6 +9,7 @@ from scipy.stats import wasserstein_distance
 from curvature_histogram import (
     BIN_CENTERS as CURVATURE_BIN_CENTERS,
     HISTOGRAM_COLUMNS as CURVATURE_HISTOGRAM_COLUMNS,
+    curvature_single,
 )
 
 data_path = Path("../ShapeDatabase_INFOMR_normalized_cleaned")
@@ -39,7 +40,7 @@ df_property = df_property.merge(
     validate="one_to_one",
 )
 
-query_path = Path("../ShapeDatabase_INFOMR_normalized_cleaned/AircraftBuoyant/m1347.obj")
+query_path = Path("../ShapeDatabase_INFOMR_normalized_cleaned/PlantIndoors/D00800.obj")
 info, q_mesh = mmru.process_single_mesh(query_path)
 
 if q_mesh is None:
@@ -112,17 +113,7 @@ A3_bin_edges = np.linspace(0, np.pi, B + 1)
 q_A3_hist, _ = np.histogram(q_A3, bins=A3_bin_edges)
 q_A3_hist = q_A3_hist/q_A3_hist.sum()
 
-query_curvature = curvature_data.loc[
-    (curvature_data["Class"] == query_path.parent.name)
-    & (curvature_data["File"] == query_path.name),
-    CURVATURE_HISTOGRAM_COLUMNS,
-]
-if len(query_curvature) != 1:
-    raise ValueError(
-        f"Expected one successful curvature histogram for {query_path}, "
-        f"found {len(query_curvature)}"
-    )
-q_curvature_hist = query_curvature.iloc[0].to_numpy(dtype=float)
+q_curvature_hist, _, _ = curvature_single(q_mesh)
 
 # Descriptor weights used both in ranking and in the comparison table.
 wvol  = 0.7
