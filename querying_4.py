@@ -6,6 +6,11 @@ from pathlib import Path
 import MMR_utility as mmru
 import trimesh as tr
 from scipy.stats import wasserstein_distance
+from curvature_histogram import (
+    BIN_CENTERS as CURVATURE_BIN_CENTERS,
+    HISTOGRAM_COLUMNS as CURVATURE_HISTOGRAM_COLUMNS,
+    curvature_single,
+)
 
 data_path = Path("../ShapeDatabase_INFOMR_normalized_cleaned")
 
@@ -23,6 +28,17 @@ df_shape_property = pd.read_csv("shape_property_descriptors.csv")
 df_shape_property = df_shape_property.drop(columns=["Class"])
 df_property = df_global_property.merge(df_shape_property, on="File")
 df_property = df_property.rename(columns={"Surface Area": "Surface_Area"})
+
+df_curvature = pd.read_csv("curvature_histograms.csv")
+df_curvature = df_curvature.loc[
+    df_curvature["status"] == "OK",
+    ["File", *CURVATURE_HISTOGRAM_COLUMNS],
+]
+df_property = df_property.merge(
+    df_curvature,
+    on="File",
+    validate="one_to_one",
+)
 
 query_path = Path("../ShapeDatabase_INFOMR_normalized_cleaned/AircraftBuoyant/m1347.obj")
 info, q_mesh = mmru.process_single_mesh(query_path)
@@ -97,6 +113,8 @@ A3_bin_edges = np.linspace(0, np.pi, B + 1)
 q_A3_hist, _ = np.histogram(q_A3, bins=A3_bin_edges)
 q_A3_hist = q_A3_hist/q_A3_hist.sum()
 
+q_curvature_hist, _, _ = curvature_single(q_mesh)
+
 # Descriptor weights used both in ranking and in the comparison table.
 wvol  = 0.7
 wsuar = 1
@@ -110,6 +128,7 @@ wd2   = 1
 wd3   = 1.3
 wd4   = 0.5
 wa3   = 0.6
+wcurv = 1.0
 
 weights = {
     "Volume": wvol,
@@ -124,6 +143,7 @@ weights = {
     "D3": wd3,
     "D4": wd4,
     "A3": wa3,
+    "Curvature": wcurv,
 }
 
 query_values = {
@@ -139,6 +159,7 @@ query_values = {
     "D3": "25-bin histogram",
     "D4": "25-bin histogram",
     "A3": "25-bin histogram",
+    "Curvature": "25-bin histogram",
 }
 
 query_histograms = {
@@ -147,6 +168,7 @@ query_histograms = {
     "D3": q_D3_hist,
     "D4": q_D4_hist,
     "A3": q_A3_hist,
+    "Curvature": q_curvature_hist,
 }
 
 distances = []
@@ -174,9 +196,17 @@ for row in df_property.itertuples(index=False):
         candidate_histogram = [
             getattr(row, f"{descriptor}_bin_{index}") for index in range(B)
         ]
-        histogram_distances[descriptor] = wasserstein_distance(
-            query_histograms[descriptor], candidate_histogram
-        )
+        if descriptor == "Curvature":
+            histogram_distances[descriptor] = wasserstein_distance(
+                CURVATURE_BIN_CENTERS,
+                CURVATURE_BIN_CENTERS,
+                u_weights=query_histograms[descriptor],
+                v_weights=candidate_histogram,
+            )
+        else:
+            histogram_distances[descriptor] = wasserstein_distance(
+                query_histograms[descriptor], candidate_histogram
+            )
 
     descriptor_distances = {
         "Volume": volume_dis,
@@ -250,7 +280,7 @@ for ax, result in zip(mesh_axes, mesh_results):
 table_ax = fig.add_subplot(grid[2, :])
 table_ax.axis("off")
 table_rows = []
-histogram_descriptors = {"D1", "D2", "D3", "D4", "A3"}
+histogram_descriptors = {"D1", "D2", "D3", "D4", "A3", "Curvature"}
 for descriptor in weights:
     query_value = query_values[descriptor]
     row_values = [
