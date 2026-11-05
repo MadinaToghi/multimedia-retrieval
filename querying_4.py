@@ -9,7 +9,6 @@ from scipy.stats import wasserstein_distance
 from curvature_histogram import (
     BIN_CENTERS as CURVATURE_BIN_CENTERS,
     HISTOGRAM_COLUMNS as CURVATURE_HISTOGRAM_COLUMNS,
-    curvature_single,
 )
 
 data_path = Path("../ShapeDatabase_INFOMR_normalized_cleaned")
@@ -29,10 +28,10 @@ df_shape_property = df_shape_property.drop(columns=["Class"])
 df_property = df_global_property.merge(df_shape_property, on="File")
 df_property = df_property.rename(columns={"Surface Area": "Surface_Area"})
 
-df_curvature = pd.read_csv("curvature_histograms.csv")
-df_curvature = df_curvature.loc[
-    df_curvature["status"] == "OK",
-    ["File", *CURVATURE_HISTOGRAM_COLUMNS],
+curvature_data = pd.read_csv("curvature_histograms.csv")
+curvature_data = curvature_data.loc[curvature_data["status"] == "OK"]
+df_curvature = curvature_data.loc[
+    :, ["File", *CURVATURE_HISTOGRAM_COLUMNS]
 ]
 df_property = df_property.merge(
     df_curvature,
@@ -113,7 +112,17 @@ A3_bin_edges = np.linspace(0, np.pi, B + 1)
 q_A3_hist, _ = np.histogram(q_A3, bins=A3_bin_edges)
 q_A3_hist = q_A3_hist/q_A3_hist.sum()
 
-q_curvature_hist, _, _ = curvature_single(q_mesh)
+query_curvature = curvature_data.loc[
+    (curvature_data["Class"] == query_path.parent.name)
+    & (curvature_data["File"] == query_path.name),
+    CURVATURE_HISTOGRAM_COLUMNS,
+]
+if len(query_curvature) != 1:
+    raise ValueError(
+        f"Expected one successful curvature histogram for {query_path}, "
+        f"found {len(query_curvature)}"
+    )
+q_curvature_hist = query_curvature.iloc[0].to_numpy(dtype=float)
 
 # Descriptor weights used both in ranking and in the comparison table.
 wvol  = 0.7
