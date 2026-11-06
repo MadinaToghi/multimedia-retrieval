@@ -1,0 +1,9 @@
+# Local source and generated mesh databases are large and must not be committed.
+/shapes/ShapeDatabase_INFOMR
+/shapes/ShapeDatabase_INFOMR/
+/shapes/ShapeDatabase_INFOMR_cleaned/
+/shapes/ShapeDatabase_INFOMR_cleaned_sample/
+
+# Feature tables, scalers, and settings are generated per database.
+/features/*
+!/features/.gitkeep
