@@ -68,7 +68,7 @@ unique_classes, class_ids = np.unique(
     classes, return_inverse=True
 )
 
-fig, ax = plt.subplots(figsize=(12, 9))
+fig, ax = plt.subplots(figsize=(16, 10))
 
 scatter = ax.scatter(
     X_2d[:, 0],
@@ -76,25 +76,91 @@ scatter = ax.scatter(
     c=class_ids,
     cmap="nipy_spectral",
     s=25,
-    alpha=0.8
 )
 
 ax.set_title("Interactive t-SNE Visualization of 3D Shapes")
 ax.set_xlabel("t-SNE Dimension 1")
 ax.set_ylabel("t-SNE Dimension 2")
 
-# Add hover interaction
-cursor = mplcursors.cursor(scatter, hover=True)
+# Create a scatterplot for highlighting the selected class
+highlight = ax.scatter([], [], s=50, zorder=3)
 
-@cursor.connect("add")
-def on_hover(sel):
-    index = sel.index
+# Create an annotation for the hovered shape
+annotation = ax.annotate(
+    "",
+    xy=(0, 0),
+    xytext=(15, 15),
+    textcoords="offset points",
+    bbox=dict(boxstyle="round", fc="yellow", alpha=0.9)
+)
+annotation.set_visible(False)
 
-    sel.annotation.set_text(
-        f"Class: {classes[index]}\n"
-        f"File: {files[index]}"
-    )
+selected_class = None
 
+def on_hover(event):
+    global selected_class
+
+    # Check whether the mouse is over a point
+    if event.inaxes == ax:
+        contains, info = scatter.contains(event)
+    else:
+        contains = False
+
+    if contains:
+        index = info["ind"][0]
+        current_class = classes[index]
+
+        # Show filename and class of the specific point
+        annotation.xy = X_2d[index]
+        annotation.set_text(
+            f"Class: {current_class}\n"
+            f"File: {files[index]}"
+        )
+        annotation.set_visible(True)
+
+        # Only update the highlight when the class changes
+        if selected_class != current_class:
+            selected_class = current_class
+
+            mask = classes == current_class
+
+            # Fade the other classes
+            scatter.set_alpha(0.1)
+
+            # Highlight all points from the same class
+            highlight.set_offsets(X_2d[mask])
+            highlight.set_facecolors(
+                scatter.cmap(scatter.norm(class_ids[mask]))
+            )
+
+        fig.canvas.draw_idle()
+
+    else:
+        # Restore all classes when leaving a point
+        if selected_class is not None:
+            selected_class = None
+            scatter.set_alpha(0.8)
+            highlight.set_offsets(np.empty((0, 2)))
+            annotation.set_visible(False)
+            fig.canvas.draw_idle()
+
+
+# Detect mouse movement
+fig.canvas.mpl_connect("motion_notify_event", on_hover)
+
+handles, _ = scatter.legend_elements(num=None)
+
+ax.legend(
+    handles,
+    unique_classes,
+    title="Shape Classes",
+    loc="upper center",
+    bbox_to_anchor=(0.5, -0.16),
+    fontsize = 8,
+    ncol = 8
+)
+
+plt.subplots_adjust(bottom=0.42)
 
 tsne_df = combined_df[["Class", "File"]].copy()
 
@@ -109,5 +175,10 @@ tsne_df.to_csv("tsne_embedding_p30_n_iter300.csv", index=False)
 
 print("Saved t-SNE coordinates.")
 
-plt.tight_layout()
+plt.savefig(
+    "step5_tsne_classes.png",
+    dpi=200,
+    bbox_inches = "tight"
+)
+
 plt.show()
