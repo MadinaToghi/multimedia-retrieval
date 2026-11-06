@@ -1,0 +1,20 @@
+{
+  "curvature": {
+    "bin_count": 25,
+    "maximum_curvature": 100.0,
+    "min_fit_fraction": 0.95,
+    "query_sample_count": 3000,
+    "radius": 0.05,
+    "seed": 42
+  },
+  "elementary": {
+    "scaler_file": "elementary_scaler.csv",
+    "scaling": "z-score",
+    "values": "raw"
+  },
+  "histogram": {
+    "bin_count": 25,
+    "sample_count": 10000,
+    "seed": 42
+  }
+}
