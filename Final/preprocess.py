@@ -29,13 +29,26 @@ def _orientation_sign(values):
     return -1.0 if score < 0 else 1.0
 
 
-def mesh_alignment(mesh):
-    """Align a mesh to principal axes and apply deterministic axis flips.
+def center_mesh(mesh):
+    """Translate a mesh so its vertex barycenter sits at the origin.
+
+    Args:
+        mesh: Mesh to center; a copy is translated.
+    Returns:
+        Centered copy of the mesh.
+    """
+    mesh = mesh.copy()
+    mesh.apply_translation(-mesh.vertices.mean(axis=0))
+    return mesh
+
+
+def align_to_principal_axes(mesh):
+    """Rotate a centered mesh so its PCA axes map to x, y, and z.
 
     Args:
         mesh: Centered Trimesh to align.
     Returns:
-        New Trimesh with PCA axes mapped to x, y, and z.
+        New Trimesh with the largest-variance axis on x, then y, then z.
     """
     vertices = np.asarray(mesh.vertices, dtype=np.float64)
     covariance = np.cov(vertices, rowvar=False)
@@ -46,29 +59,60 @@ def mesh_alignment(mesh):
         if axes[pivot, axis_index] < 0:
             axes[:, axis_index] *= -1
     axes[:, 2] = np.cross(axes[:, 0], axes[:, 1])
-    aligned = vertices @ axes
-    aligned *= np.array([
-        _orientation_sign(aligned[:, axis]) for axis in range(3)
+    return tr.Trimesh(vertices @ axes, mesh.faces.copy(), process=False)
+
+
+def flip_axes(mesh):
+    """Mirror each axis so the heavier side of the mesh points toward +x/+y/+z.
+
+    Args:
+        mesh: PCA-aligned Trimesh.
+    Returns:
+        New Trimesh with a deterministic orientation sign on every axis.
+    """
+    vertices = np.asarray(mesh.vertices, dtype=np.float64)
+    signs = np.array([
+        _orientation_sign(vertices[:, axis]) for axis in range(3)
     ])
-    return tr.Trimesh(aligned, mesh.faces.copy(), process=False)
+    return tr.Trimesh(vertices * signs, mesh.faces.copy(), process=False)
+
+
+def mesh_alignment(mesh):
+    """Align a mesh to principal axes and apply deterministic axis flips.
+
+    Args:
+        mesh: Centered Trimesh to align.
+    Returns:
+        New Trimesh with PCA axes mapped to x, y, and z.
+    """
+    return flip_axes(align_to_principal_axes(mesh))
+
+
+def scale_to_unit(mesh):
+    """Uniformly scale a mesh so its largest axis extent equals one.
+
+    Args:
+        mesh: Mesh to scale; a copy is scaled.
+    Returns:
+        Scaled copy of the mesh.
+    """
+    mesh = mesh.copy()
+    maximum_extent = float(np.max(mesh.extents))
+    if not np.isfinite(maximum_extent) or maximum_extent <= 0:
+        raise ValueError("Cannot normalize a mesh with zero or invalid extent")
+    mesh.apply_scale(1.0 / maximum_extent)
+    return mesh
 
 
 def normalize_mesh(mesh):
-    """Center, PCA-align, and scale a mesh to unit maximum extent.
+    """Center, PCA-align, flip, and scale a mesh to unit maximum extent.
 
     Args:
         mesh: Mesh to normalize; a copy is transformed.
     Returns:
         Centered, aligned mesh with largest axis extent equal to one.
     """
-    mesh = mesh.copy()
-    mesh.apply_translation(-mesh.vertices.mean(axis=0))
-    mesh = mesh_alignment(mesh)
-    maximum_extent = float(np.max(mesh.extents))
-    if not np.isfinite(maximum_extent) or maximum_extent <= 0:
-        raise ValueError("Cannot normalize a mesh with zero or invalid extent")
-    mesh.apply_scale(1.0 / maximum_extent)
-    return mesh
+    return scale_to_unit(mesh_alignment(center_mesh(mesh)))
 
 
 # Repair and vertex-count adjustment
@@ -171,23 +215,14 @@ def decimate_to_vertex_range(mesh, minimum, maximum, target, max_iterations):
     return best_mesh, iterations, minimum <= len(best_mesh.vertices) <= maximum
 
 
-# One canonical preprocessing sequence, shared by database and query runs
+def resample_mesh(mesh, minimum_vertices=MIN_VERTICES,
+                  maximum_vertices=MAX_VERTICES,
+                  max_iterations=MAX_RESAMPLING_ITERATIONS):
+    """Refine or decimate a mesh into the vertex range.
 
-def preprocess_mesh(mesh, minimum_vertices=MIN_VERTICES,
-                    maximum_vertices=MAX_VERTICES,
-                    max_iterations=MAX_RESAMPLING_ITERATIONS):
-    """Repair, resample, center, align, and normalize one mesh in that order.
-
-    Args:
-        mesh: Raw loaded mesh.
-        minimum_vertices: Inclusive minimum final vertex count.
-        maximum_vertices: Inclusive maximum final vertex count.
-        max_iterations: Maximum subdivision or decimation iterations.
     Returns:
-        Tuple of normalized mesh and preprocessing metadata.
+        Tuple of mesh, method name, iteration count, and in-range flag. 
     """
-    original_vertices, original_faces = len(mesh.vertices), len(mesh.faces)
-    mesh, repaired, removed_components = repair_mesh(mesh)
     target = (minimum_vertices + maximum_vertices) // 2
     count = len(mesh.vertices)
     method, iterations = "unchanged", 0
@@ -211,6 +246,30 @@ def preprocess_mesh(mesh, minimum_vertices=MIN_VERTICES,
         method = "simplified"
     else:
         converged = True
+
+    return mesh, method, iterations, converged
+
+
+# One canonical preprocessing sequence, shared by database and query runs
+
+def preprocess_mesh(mesh, minimum_vertices=MIN_VERTICES,
+                    maximum_vertices=MAX_VERTICES,
+                    max_iterations=MAX_RESAMPLING_ITERATIONS):
+    """Repair, resample, center, align, and normalize one mesh in that order.
+
+    Args:
+        mesh: Raw loaded mesh.
+        minimum_vertices: Inclusive minimum final vertex count.
+        maximum_vertices: Inclusive maximum final vertex count.
+        max_iterations: Maximum subdivision or decimation iterations.
+    Returns:
+        Tuple of normalized mesh and preprocessing metadata.
+    """
+    original_vertices, original_faces = len(mesh.vertices), len(mesh.faces)
+    mesh, repaired, removed_components = repair_mesh(mesh)
+    mesh, method, iterations, converged = resample_mesh(
+        mesh, minimum_vertices, maximum_vertices, max_iterations
+    )
 
     mesh = normalize_mesh(mesh)
     metadata = {

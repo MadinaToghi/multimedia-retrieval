@@ -31,10 +31,11 @@ Place the large source database locally at:
 Final/shapes/ShapeDatabase_INFOMR/<Category>/<mesh>.obj
 ```
 
-Keep the category folders and OBJ filenames intact. The database and generated
-outputs are excluded by `.gitignore`; they are not uploaded to GitHub. Each
-collaborator must supply their own local database copy. The `shapes/` folder is
-kept in Git with a placeholder file so the expected location exists after clone.
+Keep the category folders and OBJ filenames intact. The source and processed
+shape databases are excluded by `.gitignore`; they are not uploaded to GitHub.
+Feature tables and their settings can be committed separately. Each collaborator
+must supply their own local database copy. The `shapes/` folder is kept in Git
+with a placeholder file so the expected location exists after clone.
 
 ## Run a Sample
 
@@ -52,6 +53,29 @@ Sample meshes go to `Final/shapes/ShapeDatabase_INFOMR_cleaned_sample`; sample
 features and scaler/bin settings go to `Final/features/sample`. Outputs are not
 overwritten unless a feature script receives `--overwrite`. Preprocessing can
 resume completed work with `--resume`.
+
+## Presentation Demos
+
+With the source database in place, run these scripts in order:
+
+```bash
+python Final/demo/demo1.py
+python Final/demo/demo2.py
+python Final/demo/demo3.py
+python Final/demo/demo4.py
+```
+
+Demo 1 repairs each mesh before refining or decimating it, matching the
+preprocessing pipeline, and writes the results to `Final/demo/demo_output/1_remeshed`.
+Demo 2 reads those meshes, applies the pipeline's normalization steps, and
+writes `Final/demo/demo_output/2_normalized`. Demos 3 and 4 both read demo 2's output;
+demo 3 compares global and shape descriptors, while demo 4 compares curvature.
+Rerun demos 1 and 2 after changing the selections in `demo/demo_common.py`. The
+first three selections appear in demo 3, and the last three appear in demo 4.
+
+The default examples span six categories. The three simplified meshes have
+approximately 18,900, 17,300, and 37,400 vertices after repair, respectively,
+before they are reduced to the 5,000-10,000 vertex target range.
 
 ## Run the Full Database
 
