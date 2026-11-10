@@ -44,6 +44,29 @@ def roc_curve_for_query(
     return fpr, tpr, auc
 
 
+def precision_recall_for_query(
+    distances: np.ndarray,
+    relevant: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, float]:
+    positive_count = int(relevant.sum())
+    if positive_count == 0:
+        raise ValueError("A precision-recall curve requires relevant meshes.")
+
+    order = np.argsort(distances, kind="stable")
+    sorted_distances = distances[order]
+    sorted_relevant = relevant[order].astype(int)
+    group_ends = np.r_[np.flatnonzero(np.diff(sorted_distances)) + 1, len(order)]
+
+    true_positives = np.cumsum(sorted_relevant)[group_ends - 1]
+    predicted_positives = group_ends
+    recall = np.r_[0.0, true_positives / positive_count]
+    precision = np.r_[1.0, true_positives / predicted_positives]
+    average_precision = float(
+        np.sum(np.diff(recall) * precision[1:])
+    )
+    return recall, precision, average_precision
+
+
 def summarize_categories(auc_df: pd.DataFrame) -> pd.DataFrame:
     rows = []
     for (method, query_class), group in auc_df.groupby(
@@ -58,6 +81,8 @@ def summarize_categories(auc_df: pd.DataFrame) -> pd.DataFrame:
             "Query_Count": len(group),
             "Mean_AUC": group["AUC"].mean(),
             "Median_AUC": group["AUC"].median(),
+            "Mean_Average_Precision": group["Average_Precision"].mean(),
+            "Median_Average_Precision": group["Average_Precision"].median(),
             "Best_Query_File": best["Query_File"],
             "Best_Query_AUC": best["AUC"],
             "Worst_Query_File": worst["Query_File"],
@@ -212,8 +237,10 @@ def main() -> None:
 
     method_curves = {}
     all_query_curves = {}
+    all_query_pr_curves = {}
     auc_rows = []
     fpr_grid = np.linspace(0.0, 1.0, 1001)
+    recall_grid = np.linspace(0.0, 1.0, 1001)
     for method, result_path in RESULT_PATHS.items():
         results = pd.read_csv(result_path)
         required_columns = {
@@ -227,18 +254,31 @@ def main() -> None:
             raise ValueError(f"No query results found in {result_path.name}.")
 
         all_query_curves[method] = {}
+        all_query_pr_curves[method] = {}
         for (query_file, query_class), query_results in results.groupby(
             ["Query_File", "Query_Class"], sort=False
         ):
             relevant = query_results["Class"].to_numpy() == query_class
             distances = query_results["Distance"].to_numpy(dtype=float)
             fpr, tpr, auc = roc_curve_for_query(distances, relevant)
+            recall, precision, average_precision = precision_recall_for_query(
+                distances,
+                relevant,
+            )
             all_query_curves[method][(query_file, query_class)] = (fpr, tpr)
+            all_query_pr_curves[method][(query_file, query_class)] = (
+                recall,
+                precision,
+            )
             auc_rows.append({
                 "Method": method,
                 "Query_File": query_file,
                 "Query_Class": query_class,
                 "AUC": auc,
+                "Average_Precision": average_precision,
+                "Relevant_Count": int(relevant.sum()),
+                "Candidate_Count": len(relevant),
+                "Positive_Prevalence": float(relevant.mean()),
             })
 
     auc_df = pd.DataFrame(auc_rows)
@@ -257,6 +297,9 @@ def main() -> None:
     if set(all_query_curves) != {"KNN", "RNN"}:
         raise ValueError("Both KNN and RNN results are required.")
 
+    if set(all_query_pr_curves) != {"KNN", "RNN"}:
+        raise ValueError("Both KNN and RNN precision-recall results are required.")
+
     if args.query:
         selected_keys = {
             key for key in query_sets["KNN"] if key[0] == args.query
@@ -267,9 +310,17 @@ def main() -> None:
             method: [all_query_curves[method][key] for key in selected_keys]
             for method in RESULT_PATHS
         }
+        selected_pr_curves = {
+            method: [all_query_pr_curves[method][key] for key in selected_keys]
+            for method in RESULT_PATHS
+        }
     else:
         selected_query_curves = {
             method: list(all_query_curves[method].values())
+            for method in RESULT_PATHS
+        }
+        selected_pr_curves = {
+            method: list(all_query_pr_curves[method].values())
             for method in RESULT_PATHS
         }
 
@@ -280,6 +331,14 @@ def main() -> None:
             axis=0,
         )
         for method, curves in selected_query_curves.items()
+    }
+    method_pr_curves = {
+        method: np.mean(
+            [np.interp(recall_grid, curve_recall, curve_precision)
+             for curve_recall, curve_precision in curves],
+            axis=0,
+        )
+        for method, curves in selected_pr_curves.items()
     }
 
     plot_fpr = np.r_[0.0, fpr_grid]
@@ -293,6 +352,21 @@ def main() -> None:
         "RNN_Mean_TPR": plot_curves["RNN"],
     })
     curve_data.to_csv(ROC_DATA_PATH, index=False)
+
+    plot_recall = np.r_[0.0, recall_grid]
+    plot_pr_curves = {
+        method: np.r_[1.0, mean_precision]
+        for method, mean_precision in method_pr_curves.items()
+    }
+    precision_recall_data = pd.DataFrame({
+        "Recall": plot_recall,
+        "KNN_Mean_Precision": plot_pr_curves["KNN"],
+        "RNN_Mean_Precision": plot_pr_curves["RNN"],
+    })
+    precision_recall_data.to_csv(
+        ROC_DIR / "precision_recall_curve_data.csv",
+        index=False,
+    )
     auc_df.to_csv(AUC_DATA_PATH, index=False)
 
     category_df = summarize_categories(auc_df)
@@ -323,11 +397,50 @@ def main() -> None:
     plt.savefig(ROC_PLOT_PATH, dpi=200, bbox_inches="tight")
     plt.close()
 
+    plt.figure(figsize=(8, 6))
+    for method in RESULT_PATHS:
+        selected_auc = auc_df[auc_df["Method"] == method]
+        if args.query:
+            selected_auc = selected_auc[selected_auc["Query_File"] == args.query]
+        mean_ap = selected_auc["Average_Precision"].mean()
+        plt.plot(
+            plot_recall,
+            plot_pr_curves[method],
+            label=f"{method} (mean AP = {mean_ap:.3f})",
+            linestyle="-" if method == "KNN" else "--",
+        )
+    selected_prevalence = auc_df["Positive_Prevalence"]
+    if args.query:
+        selected_prevalence = auc_df.loc[
+            auc_df["Query_File"] == args.query, "Positive_Prevalence"
+        ]
+    plt.axhline(
+        selected_prevalence.mean(),
+        color="gray",
+        linestyle=":",
+        label=f"Positive prevalence = {selected_prevalence.mean():.3f}",
+    )
+    plt.xlim(0, 1)
+    plt.ylim(0, 1.02)
+    plt.xlabel("Recall")
+    plt.ylabel("Precision")
+    plt.title(
+        f"{'Precision-Recall Curves for ' + args.query if args.query else 'Macro-Averaged Precision-Recall Curves'}"
+    )
+    plt.grid(alpha=0.3)
+    plt.legend(loc="upper right")
+    plt.tight_layout()
+    precision_recall_plot_path = ROC_DIR / "precision_recall_curve.png"
+    plt.savefig(precision_recall_plot_path, dpi=200, bbox_inches="tight")
+    plt.close()
+
     print(f"Queries evaluated per method: {len(query_sets['KNN'])}")
     for method in RESULT_PATHS:
         method_auc = auc_df[auc_df["Method"] == method]
         mean_auc = method_auc["AUC"].mean()
         median_auc = method_auc["AUC"].median()
+        mean_ap = method_auc["Average_Precision"].mean()
+        median_ap = method_auc["Average_Precision"].median()
         method_categories = category_df[category_df["Method"] == method]
         best_category = method_categories.sort_values(
             ["Mean_AUC", "Query_Class"], kind="stable"
@@ -336,7 +449,8 @@ def main() -> None:
             ["Mean_AUC", "Query_Class"], kind="stable"
         ).iloc[0]
         print(
-            f"{method}: mean AUC={mean_auc:.4f}, median AUC={median_auc:.4f}"
+            f"{method}: mean AUC={mean_auc:.4f}, median AUC={median_auc:.4f}, "
+            f"mean AP={mean_ap:.4f}, median AP={median_ap:.4f}"
         )
         print(
             f"  Best category by mean AUC: {best_category['Query_Class']} "
@@ -360,6 +474,14 @@ def main() -> None:
     print(f"Per-category AUCs: {CATEGORY_AUC_PATH.relative_to(PROJECT_DIR)}")
     print(f"Category plot: {CATEGORY_PLOT_PATH.relative_to(PROJECT_DIR)}")
     print(f"Best/worst query plot: {EXTREMES_PLOT_PATH.relative_to(PROJECT_DIR)}")
+    print(
+        "Precision-recall plot: "
+        f"{precision_recall_plot_path.relative_to(PROJECT_DIR)}"
+    )
+    print(
+        "Precision-recall data: "
+        f"{(ROC_DIR / 'precision_recall_curve_data.csv').relative_to(PROJECT_DIR)}"
+    )
 
 
 if __name__ == "__main__":
