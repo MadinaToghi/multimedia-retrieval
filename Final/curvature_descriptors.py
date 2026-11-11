@@ -3,8 +3,10 @@
 import argparse
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from matplotlib.backends.backend_pdf import PdfPages
 from scipy.spatial import cKDTree
 from tqdm import tqdm
 
@@ -69,7 +71,7 @@ def _fit_mean_curvature(point, neighbors, radius):
     )
     if rank < 6:
         return None
-    slope_x, slope_y = coefficients[1:3] / radius
+    slope_x, slope_y = coefficients[1:3] 
     second_xx, second_xy, second_yy = coefficients[3:6] / radius
     mean_curvature = (
         (1.0 + slope_y**2) * second_xx
@@ -227,6 +229,83 @@ def extract_curvature_descriptors(database_path, seed=42,
     return pd.DataFrame(rows)
 
 
+def plot_category_histograms(descriptors, output_path):
+    """Write one PDF page per category using already-extracted histograms."""
+    missing_columns = [
+        column for column in ["Class", "Status", *CURVATURE_COLUMNS]
+        if column not in descriptors.columns
+    ]
+    if missing_columns:
+        raise ValueError(
+            "Curvature descriptor data is missing columns: "
+            + ", ".join(missing_columns)
+        )
+
+    histogram_data = descriptors[CURVATURE_COLUMNS].apply(
+        pd.to_numeric, errors="coerce"
+    )
+    histogram_values = histogram_data.to_numpy(dtype=float)
+    valid_rows = (
+        descriptors["Status"].isin(["OK", "LOW_FIT"]).to_numpy()
+        & np.isfinite(histogram_values).all(axis=1)
+        & (histogram_values >= 0.0).all(axis=1)
+        & (histogram_values.sum(axis=1) > 0.0)
+    )
+    successful = descriptors.loc[valid_rows].copy()
+    successful.loc[:, CURVATURE_COLUMNS] = histogram_values[valid_rows]
+    if successful.empty:
+        raise ValueError("No valid curvature histograms are available to plot")
+
+    bin_edges = np.linspace(
+        0.0, np.log1p(CURVATURE_MAX), CURVATURE_BIN_COUNT + 1
+    )
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2.0
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with PdfPages(output_path) as pdf:
+        for category, category_rows in successful.groupby("Class", sort=True):
+            histograms = category_rows[CURVATURE_COLUMNS].to_numpy(
+                dtype=float, copy=True
+            )
+            histograms /= histograms.sum(axis=1, keepdims=True)
+            figure, axis = plt.subplots(figsize=(9, 5))
+
+            for histogram in histograms:
+                axis.plot(
+                    bin_centers,
+                    histogram,
+                    color="steelblue",
+                    alpha=0.45,
+                    linewidth=1,
+                )
+            axis.plot(
+                bin_centers,
+                histograms.mean(axis=0),
+                color="darkorange",
+                linewidth=2.5,
+                label="Category mean",
+            )
+            low_fit_count = (category_rows["Status"] == "LOW_FIT").sum()
+            axis.set(
+                title=(
+                    f"{category} curvature histograms "
+                    f"({len(category_rows)} meshes; "
+                    f"{low_fit_count} below fit threshold)"
+                ),
+                xlabel="log(1 + absolute mean curvature)",
+                ylabel="Area-uniform normalized frequency",
+                xlim=(bin_edges[0], bin_edges[-1]),
+                ylim=(0, None),
+            )
+            axis.grid(axis="y", alpha=0.25)
+            axis.legend()
+            figure.tight_layout()
+            pdf.savefig(figure)
+            plt.close(figure)
+    return output_path
+
+
 def main():
     """Extract curvature distributions and save coverage/status diagnostics."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -250,6 +329,7 @@ def main():
     args = parser.parse_args()
 
     output = args.features / "curvature_descriptors.csv"
+    plot_output = args.features / "curvature_descriptors_by_category.pdf"
     if output.exists() and not args.overwrite:
         parser.error(
             "Curvature output already exists; pass --overwrite to replace it."
@@ -276,6 +356,7 @@ def main():
     print(f"Errors: {(descriptors['Status'] == 'ERROR').sum()}")
     print(f"Curvature histograms and coverage: {output}")
     print(f"Feature settings: {config_path}")
+    print(f"Category plots: {plot_category_histograms(descriptors, plot_output)}")
 
 
 if __name__ == "__main__":
