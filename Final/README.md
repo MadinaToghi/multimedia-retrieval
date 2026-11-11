@@ -104,15 +104,22 @@ command line:
 python Final/query.py --mesh Final/shapes/ShapeDatabase_INFOMR/<Category>/<mesh>.obj
 ```
 
-For a full-database query, select the matching full database and feature files:
+By default, queries search the full processed database at
+`Final/shapes/ShapeDatabase_INFOMR_cleaned` and use its matching feature tables
+and configuration in `Final/features/`.
+
+To query only the sample database, explicitly select its matching data and
+features:
 
 ```bash
-python Final/query.py --mesh <path-to-query.obj> --database Final/shapes/ShapeDatabase_INFOMR_cleaned --features Final/features
+python Final/query.py --mesh <path-to-query.obj> --database Final/shapes/ShapeDatabase_INFOMR_cleaned_sample --features Final/features/sample
 ```
 
 Query preprocessing calls the same function and uses the same feature settings
 as database preprocessing. The query display reports the top five matches and
-their per-descriptor distances.
+their per-descriptor distances. If the query path is inside the source database
+and that same category/file is in the candidate database, it is excluded from
+the results to avoid returning the query as its own nearest match.
 
 ## Feature Notes
 

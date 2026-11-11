@@ -166,6 +166,27 @@ def query_database(query_path, database_path, features_path, source_path=None,
     ).merge(
         curvatures, on=keys, how="left", validate="one_to_one"
     )
+    query_database_key = None
+    if source_path is not None:
+        try:
+            relative_query_path = query_path.resolve().relative_to(
+                Path(source_path).resolve()
+            )
+        except ValueError:
+            relative_query_path = None
+        if relative_query_path is not None and len(relative_query_path.parts) > 1:
+            query_database_key = (
+                relative_query_path.parent.name,
+                relative_query_path.name,
+            )
+    excluded_query_candidate = 0
+    if query_database_key is not None:
+        is_query_candidate = (
+            candidates["Class"].eq(query_database_key[0])
+            & candidates["File"].eq(query_database_key[1])
+        )
+        excluded_query_candidate = int(is_query_candidate.sum())
+        candidates = candidates.loc[~is_query_candidate].copy()
     if candidates.empty:
         raise ValueError("No preprocessed candidates were found")
 
@@ -277,7 +298,9 @@ def query_database(query_path, database_path, features_path, source_path=None,
         "Curvature_coverage": curvature_coverage,
         "Curvature_fit_fraction": curvature_fit_fraction,
         "Curvature_error": curvature_error,
+        "Candidates_ranked": len(candidates),
         "Excluded_missing_curvature_candidates": excluded_curvature_candidates,
+        "Excluded_query_candidate": excluded_query_candidate,
         "Identifier": identifier,
         "Histogram_seed": histogram_seed,
         "Curvature_seed": curvature_seed,
@@ -383,7 +406,7 @@ def main():
     parser.add_argument(
         "--database",
         type=Path,
-        default=PROJECT_DIR / "shapes" / "ShapeDatabase_INFOMR_cleaned_sample",
+        default=PROJECT_DIR / "shapes" / "ShapeDatabase_INFOMR_cleaned",
     )
     parser.add_argument(
         "--source",
@@ -394,7 +417,7 @@ def main():
     parser.add_argument(
         "--features",
         type=Path,
-        default=PROJECT_DIR / "features" / "sample",
+        default=PROJECT_DIR / "features",
     )
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument(
@@ -415,6 +438,7 @@ def main():
         seed=args.seed,
     )
     print(f"Query: {args.mesh}")
+    print(f"Candidate meshes ranked: {quality['Candidates_ranked']}")
     print(f"Curvature reliable area: {quality['Curvature_coverage']:.1%}")
     print(f"Curvature fit success: {quality['Curvature_fit_fraction']:.1%}")
     if quality["Excluded_missing_curvature_candidates"]:
@@ -422,6 +446,8 @@ def main():
             "Candidates excluded for missing curvature: "
             f"{quality['Excluded_missing_curvature_candidates']}"
         )
+    if quality["Excluded_query_candidate"]:
+        print("Excluded the query mesh itself from candidate results")
     if quality["Elementary_quality_warnings"]:
         print(
             "Query elementary quality warnings: "
@@ -445,7 +471,7 @@ def main():
 
 
 # The CLI runs only when this file is executed directly, not when imported.
-QUERY_MESH_PATH = "ShapeDatabase_INFOMR/AquaticAnimal/m55.obj"
+QUERY_MESH_PATH = "ShapeDatabase_INFOMR/Apartment/D00478.obj"
 QUERY_MESH = PROJECT_DIR / "shapes" / QUERY_MESH_PATH.lstrip("/")
 
 
