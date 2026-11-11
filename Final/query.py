@@ -471,7 +471,8 @@ def main():
 
 
 # The CLI runs only when this file is executed directly, not when imported.
-QUERY_MESH_PATH = "ShapeDatabase_INFOMR/Apartment/D00478.obj"
+QUERY_MESH_PATH = "ShapeDatabase_INFOMR/Car/D00793.obj"
+# QUERY_MESH_PATH = "ShapeDatabase_INFOMR/Apartment/D00478.obj"
 QUERY_MESH = PROJECT_DIR / "shapes" / QUERY_MESH_PATH.lstrip("/")
 
 
