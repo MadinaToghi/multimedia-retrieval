@@ -15,7 +15,7 @@ from curvature_descriptors import (
 RADIUS = 0.05  # Meshes are scaled to size 1, so 0.05 is 5% of the mesh.
 SAMPLE_COUNT = 3000  # Surface points where curvature is estimated.
 
-# (mesh name from demo 1, description, camera elevation, azimuth)
+# (mesh name from demo 1, description)
 DEMO_MESHES = list(zip(
     DECIMATE_MESHES, ("sharp edges", "mostly flat", "smooth and round"),
     (80, 18, 18), (-90, -75, -75),
