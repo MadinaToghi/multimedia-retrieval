@@ -1,4 +1,4 @@
-"""Preprocess one OBJ, compare it with saved features, and plot its top matches."""
+"""Preprocess one OBJ, rank saved features, and browse the closest matches."""
 
 import argparse
 from pathlib import Path
@@ -129,6 +129,18 @@ def query_database(query_path, database_path, features_path, source_path=None,
         curvature_coverage = np.nan
         curvature_fit_fraction = np.nan
         curvature_error = str(error)
+    query_feature_values = {
+        feature: (
+            float(query_elementary[feature])
+            if np.isfinite(query_elementary.get(feature, np.nan))
+            else None
+        )
+        for feature in ELEMENTARY_COLUMNS
+    }
+    query_feature_values.update({
+        descriptor: histogram.copy()
+        for descriptor, histogram in query_histograms.items()
+    })
 
     elementary = pd.read_csv(features_path / "elementary_descriptors.csv")
     histograms = pd.read_csv(features_path / "histogram_descriptors.csv")
@@ -226,11 +238,15 @@ def query_database(query_path, database_path, features_path, source_path=None,
     ranked = []
     for _, row in candidates.iterrows():
         distances = {name: None for name in descriptors}
+        feature_values = {name: None for name in descriptors}
         unavailable = []
         for feature in ELEMENTARY_COLUMNS:
+            candidate_value = row.get(feature, np.nan)
+            if np.isfinite(candidate_value):
+                feature_values[feature] = float(candidate_value)
             if (
                 not np.isfinite(query_scaled.get(feature, np.nan))
-                or not np.isfinite(row.get(feature, np.nan))
+                or not np.isfinite(candidate_value)
             ):
                 unavailable.append(feature)
                 continue
@@ -247,6 +263,7 @@ def query_database(query_path, database_path, features_path, source_path=None,
             ):
                 unavailable.append(descriptor)
                 continue
+            feature_values[descriptor] = candidate_histogram.copy()
             distances[descriptor] = distribution_distance(
                 query_histograms[descriptor], candidate_histogram,
                 centers[descriptor],
@@ -262,6 +279,7 @@ def query_database(query_path, database_path, features_path, source_path=None,
         ):
             unavailable.append("Curvature")
         else:
+            feature_values["Curvature"] = candidate_curvature.copy()
             distances["Curvature"] = distribution_distance(
                 query_histograms["Curvature"], candidate_curvature,
                 centers["Curvature"],
@@ -287,6 +305,7 @@ def query_database(query_path, database_path, features_path, source_path=None,
             "Score": float(score),
             "Distances": distances,
             "Weighted_distances": weighted,
+            "Feature_values": feature_values,
             "Unavailable_descriptors": unavailable,
             "Elementary_quality_warnings": row.get("Quality_Warnings", ""),
             "Curvature_coverage": row["Interior_manifold_area_fraction"],
@@ -298,6 +317,7 @@ def query_database(query_path, database_path, features_path, source_path=None,
         "Curvature_coverage": curvature_coverage,
         "Curvature_fit_fraction": curvature_fit_fraction,
         "Curvature_error": curvature_error,
+        "Query_feature_values": query_feature_values,
         "Candidates_ranked": len(candidates),
         "Excluded_missing_curvature_candidates": excluded_curvature_candidates,
         "Excluded_query_candidate": excluded_query_candidate,
@@ -395,13 +415,12 @@ def plot_query_results(query_path, query_mesh, query_quality, matches):
 
 
 def main():
-    """Parse the selected OBJ path, print top matches, and optionally plot."""
+    """Open the interactive query UI, or run one query from the CLI."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--mesh",
         type=Path,
-        default=QUERY_MESH,
-        help="Query OBJ path (defaults to the editable QUERY_MESH_PATH below).",
+        help="Query OBJ path; supplying it runs a one-off command-line query.",
     )
     parser.add_argument(
         "--database",
@@ -424,20 +443,40 @@ def main():
         "--seed", type=int,
         help="Optional seed override; by default saved feature settings are used.",
     )
+    parser.add_argument(
+        "--cli",
+        action="store_true",
+        help="Run a one-off command-line query instead of opening the UI.",
+    )
     parser.add_argument("--no-plot", action="store_true")
     args = parser.parse_args()
     if args.top_k < 1:
         parser.error("--top-k must be at least one")
 
+    if not (args.cli or args.mesh is not None or args.no_plot):
+        from query_ui import launch_query_ui
+
+        launch_query_ui(
+            query_database=query_database,
+            descriptor_weights=DESCRIPTOR_WEIGHTS,
+            database_path=args.database,
+            source_path=args.source,
+            features_path=args.features,
+            top_k=args.top_k,
+            seed=args.seed,
+        )
+        return
+
+    mesh_path = args.mesh or QUERY_MESH
     query_mesh, quality, matches = query_database(
-        args.mesh,
+        mesh_path,
         args.database,
         args.features,
         source_path=args.source,
         top_k=args.top_k,
         seed=args.seed,
     )
-    print(f"Query: {args.mesh}")
+    print(f"Query: {mesh_path}")
     print(f"Candidate meshes ranked: {quality['Candidates_ranked']}")
     print(f"Curvature reliable area: {quality['Curvature_coverage']:.1%}")
     print(f"Curvature fit success: {quality['Curvature_fit_fraction']:.1%}")
@@ -467,7 +506,7 @@ def main():
         if match["Unavailable_descriptors"]:
             print(f"   unavailable: {', '.join(match['Unavailable_descriptors'])}")
     if not args.no_plot:
-        plot_query_results(args.mesh, query_mesh, quality, matches)
+        plot_query_results(mesh_path, query_mesh, quality, matches)
 
 
 # The CLI runs only when this file is executed directly, not when imported.

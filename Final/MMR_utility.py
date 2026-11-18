@@ -11,6 +11,25 @@ import trimesh as tr
 FEATURE_CONFIG_FILENAME = "feature_config.json"
 
 
+def show_mesh(mesh, path, isSamewindow=True):
+    """Open a mesh in Vedo with shaded faces and a wireframe overlay."""
+    from vedo import Mesh, show
+
+    vedo_mesh = Mesh([mesh.vertices, mesh.faces])
+    vedo_mesh.c("lightblue")
+    vedo_mesh.compute_normals()
+    edges = vedo_mesh.clone().wireframe().c("black").lw(1)
+    show(
+        vedo_mesh,
+        edges,
+        title=Path(path).name,
+        axes=1,
+        viewup="z",
+        interactive=True,
+        new=isSamewindow,
+    )
+
+
 def find_obj_files(database_path):
     """Return sorted OBJ paths below a database root.
 

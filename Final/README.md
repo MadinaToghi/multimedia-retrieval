@@ -23,6 +23,11 @@ conda activate MMR
 python -m pip install -r Final/requirements.txt
 ```
 
+The query window uses Tkinter and Matplotlib's Tk backend. Both are available
+in standard desktop Python/Conda installations; on some Linux distributions,
+Tkinter must be installed as an OS package. A graphical desktop session is
+required, so the UI will not open on a headless server.
+
 ## Add the Database
 
 Place the large source database locally at:
@@ -95,14 +100,27 @@ separate so scalers, histogram bins, or feature rows cannot be mixed.
 
 ## Query a Mesh
 
-Set `QUERY_MESH_PATH` near the top of `query.py` to a path relative to
-`Final/shapes`, then run `query.py` from the editor. The checked-in default is
-`ShapeDatabase_INFOMR/Insect/D00231.obj`. A path can also be supplied on the
-command line:
+Run `query.py` from the editor or repository root to open the interactive query
+window. Choose a mesh by category and filename from the original database, or
+browse to an OBJ file anywhere on your computer. Set Top K and click **Find
+nearest meshes**. The preprocessed query and ranked result previews appear in
+the window. Result thumbnails are lightweight for smooth scrolling; use
+**Interactive 3D view** on a result to rotate it. Open **Feature values and
+distances** to inspect descriptor values, per-feature distances, weights, and
+weighted contributions. The **Query feature values** button opens the query's
+descriptors. Histogram rows in both windows can be expanded to inspect their
+individual bins.
+
+The GUI uses the full cleaned database and full feature tables by default. A
+one-off command-line query is still available:
 
 ```bash
-python Final/query.py --mesh Final/shapes/ShapeDatabase_INFOMR/<Category>/<mesh>.obj
+python Final/query.py --cli --mesh Final/shapes/ShapeDatabase_INFOMR/<Category>/<mesh>.obj
 ```
+
+Supplying `--mesh` without `--cli` also selects command-line mode. Use
+`--no-plot` to print the ranked matches without opening the legacy Matplotlib
+results plot.
 
 By default, queries search the full processed database at
 `Final/shapes/ShapeDatabase_INFOMR_cleaned` and use its matching feature tables
@@ -116,10 +134,10 @@ python Final/query.py --mesh <path-to-query.obj> --database Final/shapes/ShapeDa
 ```
 
 Query preprocessing calls the same function and uses the same feature settings
-as database preprocessing. The query display reports the top five matches and
-their per-descriptor distances. If the query path is inside the source database
-and that same category/file is in the candidate database, it is excluded from
-the results to avoid returning the query as its own nearest match.
+as database preprocessing. The default Top K is five. If the query path is
+inside the source database and that same category/file is in the candidate
+database, it is excluded from the results to avoid returning the query as its
+own nearest match.
 
 ## Feature Notes
 
