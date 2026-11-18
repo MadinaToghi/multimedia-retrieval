@@ -102,8 +102,11 @@ separate so scalers, histogram bins, or feature rows cannot be mixed.
 
 Run `query.py` from the editor or repository root to open the interactive query
 window. Choose a mesh by category and filename from the original database, or
-browse to an OBJ file anywhere on your computer. Set Top K and click **Find
-nearest meshes**. The preprocessed query and ranked result previews appear in
+browse to an OBJ file anywhere on your computer. Choose **Brute Force**, **KNN
+(cKDTree)**, or **RNN (cKDTree)**. Brute Force and KNN use the Top K field; RNN
+uses a radius in the same weighted feature-score units displayed for each
+result and returns every candidate within that radius. Click **Find nearest
+meshes** to search. The preprocessed query and ranked result previews appear in
 the window. Result thumbnails are lightweight for smooth scrolling; use
 **Interactive 3D view** on a result to rotate it. Open **Feature values and
 distances** to inspect descriptor values, per-feature distances, weights, and
@@ -111,16 +114,33 @@ weighted contributions. The **Query feature values** button opens the query's
 descriptors. Histogram rows in both windows can be expanded to inspect their
 individual bins.
 
-The GUI uses the full cleaned database and full feature tables by default. A
-one-off command-line query is still available:
+The GUI loads the full cleaned database and feature tables and builds its
+in-memory cKDTree once when it starts. KNN and RNN use a Manhattan-distance
+embedding whose histogram components exactly reproduce the query pipeline's
+Wasserstein distances. Brute Force remains available as the reference search.
+If a query has unavailable features that prevent exact indexed search, the
+requested KNN or RNN search falls back to exact brute-force scoring and reports
+the reason in the status line.
+
+A one-off command-line query is also available:
 
 ```bash
 python Final/query.py --cli --mesh Final/shapes/ShapeDatabase_INFOMR/<Category>/<mesh>.obj
 ```
 
+Use `--search-method knn --top-k 5` for KNN, or
+`--search-method rnn --radius <score-radius>` for RNN. Brute Force is the
+default. For example:
+
+```bash
+python Final/query.py --cli --mesh <query.obj> --search-method knn --top-k 5 --no-plot
+python Final/query.py --cli --mesh <query.obj> --search-method rnn --radius 3.0 --no-plot
+```
+
 Supplying `--mesh` without `--cli` also selects command-line mode. Use
 `--no-plot` to print the ranked matches without opening the legacy Matplotlib
-results plot.
+results plot. That plot shows at most the first five matches; the CLI output
+still lists every RNN match.
 
 By default, queries search the full processed database at
 `Final/shapes/ShapeDatabase_INFOMR_cleaned` and use its matching feature tables
@@ -138,6 +158,35 @@ as database preprocessing. The default Top K is five. If the query path is
 inside the source database and that same category/file is in the candidate
 database, it is excluded from the results to avoid returning the query as its
 own nearest match.
+
+## Visualize Feature Similarity
+
+Run the current-feature t-SNE visualization from the repository root:
+
+```bash
+python Final/t-SNE.py
+```
+
+It uses the same weighted feature representation as retrieval, including
+normalized D1-D4, A3, and curvature histograms, and colors meshes by class.
+The interactive plot shows the class and filename when hovering over a point.
+Coordinates and a PNG are saved to `Final/visualizations/`. Use `--no-show` to
+save the outputs without opening a plot window.
+
+## Evaluate Search Performance
+
+Run the sampled brute-force versus exact cKDTree KNN benchmark:
+
+```bash
+python Final/evaluation/step5_performance.py
+```
+
+By default it samples 25 saved meshes as queries and tests K values from 1 to
+30. It verifies that KNN matches brute-force rankings and writes timing data
+and a plot under `Final/evaluation/results/`. Set `--queries`, `--max-k`, or
+`--repeats` to change the benchmark size. It reports per-query search timings
+and one-time index construction separately; neither includes preprocessing a
+new query mesh.
 
 ## Feature Notes
 

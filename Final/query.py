@@ -5,28 +5,23 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from scipy.stats import wasserstein_distance
 
 import MMR_utility as mmru
 from curvature_descriptors import (
-    CURVATURE_BIN_CENTERS,
-    CURVATURE_BIN_COUNT,
     curvature_single,
 )
 from elementary_descriptors import (
     ELEMENTARY_COLUMNS,
-    ELEMENTARY_VALIDITY_COLUMNS,
     elementary_descriptors,
     standardize_elementary,
 )
 from histogram_descriptors import (
-    HISTOGRAM_BIN_COUNT,
-    HISTOGRAM_DESCRIPTORS,
     histogram_from_samples,
     load_histogram_edges,
     sample_histogram_values,
 )
 from preprocess import preprocess_query_mesh
+from scalability import FeatureSearchIndex
 
 
 # Weights are query-ranking policy, not feature extraction settings.
@@ -48,34 +43,10 @@ DESCRIPTOR_WEIGHTS = {
 PROJECT_DIR = Path(__file__).resolve().parent
 
 
-def distribution_distance(query_histogram, candidate_histogram, centers):
-    """Compute 1-D Wasserstein distance between normalized bin proportions.
-
-    Args:
-        query_histogram: Query bin proportions.
-        candidate_histogram: Candidate bin proportions.
-        centers: Shared bin-center locations.
-    Returns:
-        Wasserstein distance in the units of the descriptor's bin centers.
-    """
-    return float(wasserstein_distance(
-        centers,
-        centers,
-        u_weights=query_histogram,
-        v_weights=candidate_histogram,
-    ))
-
-
-def _row_histogram(row, descriptor, bin_count=HISTOGRAM_BIN_COUNT):
-    """Read one row's ordered histogram bins from a pandas Series."""
-    return np.array([
-        row[f"{descriptor}_bin_{index}"] for index in range(bin_count)
-    ], dtype=np.float64)
-
-
 def query_database(query_path, database_path, features_path, source_path=None,
-                   top_k=5, seed=None):
-    """Process a query and rank saved database features without recomputation.
+                   top_k=5, seed=None, search_method="brute_force",
+                   radius=None, search_index=None):
+    """Process a query and search saved database features.
 
     Args:
         query_path: Raw query OBJ path.
@@ -84,6 +55,9 @@ def query_database(query_path, database_path, features_path, source_path=None,
         source_path: Original database root used for stable query identity.
         top_k: Number of nearest candidates to return.
         seed: Optional override for saved histogram and curvature seeds.
+        search_method: One of brute_force, knn, or rnn.
+        radius: Maximum combined feature distance for RNN search.
+        search_index: Optional preloaded database feature index.
     Returns:
         Tuple of canonical query mesh, query quality metadata, and ranked rows.
     """
@@ -142,42 +116,6 @@ def query_database(query_path, database_path, features_path, source_path=None,
         for descriptor, histogram in query_histograms.items()
     })
 
-    elementary = pd.read_csv(features_path / "elementary_descriptors.csv")
-    histograms = pd.read_csv(features_path / "histogram_descriptors.csv")
-    curvatures = pd.read_csv(features_path / "curvature_descriptors.csv")
-    keys = ["Class", "File"]
-    elementary_columns = (
-        ELEMENTARY_COLUMNS
-        + list(ELEMENTARY_VALIDITY_COLUMNS.values())
-        + ["Quality_Warnings"]
-    )
-    histogram_columns = [
-        f"{name}_bin_{index}"
-        for name in HISTOGRAM_DESCRIPTORS
-        for index in range(HISTOGRAM_BIN_COUNT)
-    ]
-    curvature_columns = [
-        f"Curvature_bin_{index}" for index in range(CURVATURE_BIN_COUNT)
-    ] + [
-        "Interior_manifold_area_fraction",
-        "Successful_fit_sample_fraction",
-    ]
-    elementary = elementary[keys + elementary_columns]
-    histograms = histograms[keys + histogram_columns]
-    curvatures = curvatures[keys + curvature_columns]
-
-    preprocessing_log = database_path / "preprocessing_log.csv"
-    if preprocessing_log.is_file():
-        candidates = pd.read_csv(preprocessing_log)[keys].drop_duplicates()
-    else:
-        candidates = elementary[keys].drop_duplicates()
-    candidates = candidates.merge(
-        elementary, on=keys, how="left", validate="one_to_one"
-    ).merge(
-        histograms, on=keys, how="left", validate="one_to_one"
-    ).merge(
-        curvatures, on=keys, how="left", validate="one_to_one"
-    )
     query_database_key = None
     if source_path is not None:
         try:
@@ -191,141 +129,38 @@ def query_database(query_path, database_path, features_path, source_path=None,
                 relative_query_path.parent.name,
                 relative_query_path.name,
             )
-    excluded_query_candidate = 0
-    if query_database_key is not None:
-        is_query_candidate = (
-            candidates["Class"].eq(query_database_key[0])
-            & candidates["File"].eq(query_database_key[1])
+    if search_index is None:
+        search_index = FeatureSearchIndex(
+            database_path, features_path, DESCRIPTOR_WEIGHTS
         )
-        excluded_query_candidate = int(is_query_candidate.sum())
-        candidates = candidates.loc[~is_query_candidate].copy()
-    if candidates.empty:
-        raise ValueError("No preprocessed candidates were found")
-
-    curvature_bin_columns = [
-        f"Curvature_bin_{index}" for index in range(CURVATURE_BIN_COUNT)
-    ]
-    has_curvature = np.isfinite(
-        candidates[curvature_bin_columns].to_numpy(dtype=float)
-    ).all(axis=1)
-    has_curvature &= candidates[curvature_bin_columns].sum(axis=1).to_numpy() > 0
-    excluded_curvature_candidates = int((~has_curvature).sum())
-    candidates = candidates.loc[has_curvature].copy()
-    if candidates.empty:
-        raise ValueError("No candidates have a usable curvature histogram")
-
-    scaler_index = scaler.set_index("Feature")
-    bin_frame = pd.read_csv(features_path / "histogram_bins.csv")
-    centers = {
-        descriptor: bin_frame.loc[
-            bin_frame["Descriptor"] == descriptor
-        ].sort_values("Bin")["Center"].to_numpy(dtype=float)
-        for descriptor in HISTOGRAM_DESCRIPTORS
-    }
-    centers["Curvature"] = CURVATURE_BIN_CENTERS
-    descriptors = ELEMENTARY_COLUMNS + HISTOGRAM_DESCRIPTORS + ["Curvature"]
-    query_weight_total = sum(
-        DESCRIPTOR_WEIGHTS[name]
-        for name in descriptors
-        if (
-            np.isfinite(query_scaled.get(name, np.nan))
-            if name in ELEMENTARY_COLUMNS
-            else name in query_histograms
+    elif (
+        search_index.database_path != database_path
+        or search_index.features_path != features_path.resolve()
+    ):
+        raise ValueError(
+            "The supplied search index does not match the selected database "
+            "and feature paths"
         )
+    ranked, search_info = search_index.search(
+        query_scaled,
+        query_histograms,
+        search_method=search_method,
+        top_k=top_k,
+        radius=radius,
+        query_key=query_database_key,
     )
-
-    # Keep every candidate. Skip only a component whose value/histogram is absent.
-    ranked = []
-    for _, row in candidates.iterrows():
-        distances = {name: None for name in descriptors}
-        feature_values = {name: None for name in descriptors}
-        unavailable = []
-        for feature in ELEMENTARY_COLUMNS:
-            candidate_value = row.get(feature, np.nan)
-            if np.isfinite(candidate_value):
-                feature_values[feature] = float(candidate_value)
-            if (
-                not np.isfinite(query_scaled.get(feature, np.nan))
-                or not np.isfinite(candidate_value)
-            ):
-                unavailable.append(feature)
-                continue
-            candidate_value = (
-                row[feature] - scaler_index.loc[feature, "Mean"]
-            ) / scaler_index.loc[feature, "Std"]
-            distances[feature] = abs(query_scaled[feature] - candidate_value)
-
-        for descriptor in HISTOGRAM_DESCRIPTORS:
-            candidate_histogram = _row_histogram(row, descriptor)
-            if (
-                not np.all(np.isfinite(candidate_histogram))
-                or candidate_histogram.sum() <= 0
-            ):
-                unavailable.append(descriptor)
-                continue
-            feature_values[descriptor] = candidate_histogram.copy()
-            distances[descriptor] = distribution_distance(
-                query_histograms[descriptor], candidate_histogram,
-                centers[descriptor],
-            )
-
-        candidate_curvature = _row_histogram(
-            row, "Curvature", CURVATURE_BIN_COUNT
-        )
-        if (
-            "Curvature" not in query_histograms
-            or not np.all(np.isfinite(candidate_curvature))
-            or candidate_curvature.sum() <= 0
-        ):
-            unavailable.append("Curvature")
-        else:
-            feature_values["Curvature"] = candidate_curvature.copy()
-            distances["Curvature"] = distribution_distance(
-                query_histograms["Curvature"], candidate_curvature,
-                centers["Curvature"],
-            )
-
-        available = [
-            name for name, distance in distances.items() if distance is not None
-        ]
-        available_weight = sum(DESCRIPTOR_WEIGHTS[name] for name in available)
-        scale = query_weight_total / available_weight if available_weight else 0.0
-        weighted = {
-            name: (
-                DESCRIPTOR_WEIGHTS[name] * distance * scale
-                if distance is not None else None
-            )
-            for name, distance in distances.items()
-        }
-        score = sum(weighted[name] for name in available) if available else np.inf
-        ranked.append({
-            "Class": row["Class"],
-            "File": row["File"],
-            "Path": database_path / row["Class"] / row["File"],
-            "Score": float(score),
-            "Distances": distances,
-            "Weighted_distances": weighted,
-            "Feature_values": feature_values,
-            "Unavailable_descriptors": unavailable,
-            "Elementary_quality_warnings": row.get("Quality_Warnings", ""),
-            "Curvature_coverage": row["Interior_manifold_area_fraction"],
-            "Curvature_fit_fraction": row["Successful_fit_sample_fraction"],
-        })
-    ranked.sort(key=lambda result: result["Score"])
     return query_mesh, {
         "Preprocessing": preprocess_info,
         "Curvature_coverage": curvature_coverage,
         "Curvature_fit_fraction": curvature_fit_fraction,
         "Curvature_error": curvature_error,
         "Query_feature_values": query_feature_values,
-        "Candidates_ranked": len(candidates),
-        "Excluded_missing_curvature_candidates": excluded_curvature_candidates,
-        "Excluded_query_candidate": excluded_query_candidate,
         "Identifier": identifier,
         "Histogram_seed": histogram_seed,
         "Curvature_seed": curvature_seed,
         "Elementary_quality_warnings": query_elementary["Quality_Warnings"],
-    }, ranked[:top_k]
+        **search_info,
+    }, ranked
 
 
 def plot_query_results(query_path, query_mesh, query_quality, matches):
@@ -343,6 +178,7 @@ def plot_query_results(query_path, query_mesh, query_quality, matches):
     from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
     query_path = Path(query_path)
+    displayed_matches = matches[:5]
     figure = plt.figure(figsize=(20, 15))
     grid = figure.add_gridspec(3, 3, height_ratios=(1, 1, 1.5))
     axes = [
@@ -354,7 +190,7 @@ def plot_query_results(query_path, query_mesh, query_quality, matches):
         "Label": f"Query: {query_path.parent.name}/{query_path.name}",
         "Mesh": query_mesh,
     }]
-    for rank, match in enumerate(matches, start=1):
+    for rank, match in enumerate(displayed_matches, start=1):
         candidate_path = Path(match["Path"])
         meshes.append({
             "Label": f"#{rank}: {match['Class']}/{match['File']} "
@@ -386,7 +222,7 @@ def plot_query_results(query_path, query_mesh, query_quality, matches):
     table_rows = []
     for descriptor in DESCRIPTOR_WEIGHTS:
         values = [descriptor, f"weight: {DESCRIPTOR_WEIGHTS[descriptor]:.3g}"]
-        for match in matches:
+        for match in displayed_matches:
             distance = match["Distances"][descriptor]
             weighted = match["Weighted_distances"][descriptor]
             values.append(
@@ -398,16 +234,21 @@ def plot_query_results(query_path, query_mesh, query_quality, matches):
         cellText=table_rows,
         colLabels=["Descriptor", "Weight"] + [
             f"#{rank} {match['Class']}/{match['File']}"
-            for rank, match in enumerate(matches, start=1)
+            for rank, match in enumerate(displayed_matches, start=1)
         ],
         cellLoc="center",
         loc="center",
-        colWidths=[0.13, 0.12] + [0.15] * len(matches),
+        colWidths=[0.13, 0.12] + [0.15] * len(displayed_matches),
     )
-    figure.suptitle(
+    plot_title = (
         f"Query matches: {query_path.name} | "
         f"curvature coverage {query_quality['Curvature_coverage']:.1%}, "
         f"fit success {query_quality['Curvature_fit_fraction']:.1%}"
+    )
+    if len(matches) > len(displayed_matches):
+        plot_title += f" | showing first {len(displayed_matches)} of {len(matches)}"
+    figure.suptitle(
+        plot_title
     )
     figure.tight_layout(rect=(0, 0, 1, 0.97))
     plt.show()
@@ -440,6 +281,17 @@ def main():
     )
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument(
+        "--search-method",
+        choices=("brute_force", "knn", "rnn"),
+        default=None,
+        help="Search strategy; RNN requires --radius.",
+    )
+    parser.add_argument(
+        "--radius",
+        type=float,
+        help="Maximum combined feature score for RNN search.",
+    )
+    parser.add_argument(
         "--seed", type=int,
         help="Optional seed override; by default saved feature settings are used.",
     )
@@ -450,12 +302,27 @@ def main():
     )
     parser.add_argument("--no-plot", action="store_true")
     args = parser.parse_args()
-    if args.top_k < 1:
+    search_method = args.search_method or "brute_force"
+    if search_method != "rnn" and args.top_k < 1:
         parser.error("--top-k must be at least one")
+    if search_method == "rnn":
+        if args.radius is None or not np.isfinite(args.radius) or args.radius < 0:
+            parser.error("--radius must be a finite non-negative number for RNN")
+    elif args.radius is not None:
+        parser.error("--radius can only be used with --search-method rnn")
 
-    if not (args.cli or args.mesh is not None or args.no_plot):
+    if not (
+        args.cli
+        or args.mesh is not None
+        or args.no_plot
+        or args.search_method is not None
+        or args.radius is not None
+    ):
         from query_ui import launch_query_ui
 
+        search_index = FeatureSearchIndex(
+            args.database, args.features, DESCRIPTOR_WEIGHTS
+        )
         launch_query_ui(
             query_database=query_database,
             descriptor_weights=DESCRIPTOR_WEIGHTS,
@@ -464,6 +331,7 @@ def main():
             features_path=args.features,
             top_k=args.top_k,
             seed=args.seed,
+            search_index=search_index,
         )
         return
 
@@ -475,9 +343,21 @@ def main():
         source_path=args.source,
         top_k=args.top_k,
         seed=args.seed,
+        search_method=search_method,
+        radius=args.radius,
     )
     print(f"Query: {mesh_path}")
     print(f"Candidate meshes ranked: {quality['Candidates_ranked']}")
+    print(f"Search method: {quality['Search_method_used']}")
+    if quality["Search_fallback_reason"]:
+        print(
+            "Exact brute-force fallback: "
+            f"{quality['Search_fallback_reason']}"
+        )
+    if search_method == "rnn":
+        print(
+            f"Matches within radius {args.radius:g}: {len(matches)}"
+        )
     print(f"Curvature reliable area: {quality['Curvature_coverage']:.1%}")
     print(f"Curvature fit success: {quality['Curvature_fit_fraction']:.1%}")
     if quality["Excluded_missing_curvature_candidates"]:

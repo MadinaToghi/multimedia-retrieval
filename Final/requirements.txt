@@ -5,4 +5,5 @@ scipy==1.18.1
 trimesh==5.1.0
 tqdm==4.70.0
 matplotlib==3.11.2
+scikit-learn==1.9.1
 fast-simplification==0.2.0

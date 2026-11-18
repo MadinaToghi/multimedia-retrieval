@@ -25,6 +25,7 @@ class QueryWindow:
         features_path,
         top_k=5,
         seed=None,
+        search_index=None,
     ):
         import tkinter as tk
         from tkinter import messagebox, ttk
@@ -38,6 +39,7 @@ class QueryWindow:
         self.source_path = Path(source_path)
         self.features_path = Path(features_path)
         self.seed = seed
+        self.search_index = search_index
         self.result_queue = queue.Queue()
         self.result_cards = []
         self.preview_cache = OrderedDict()
@@ -132,19 +134,44 @@ class QueryWindow:
 
         controls = ttk.Frame(selector)
         controls.grid(row=0, column=1, sticky="ns")
-        ttk.Label(controls, text="Top K").grid(row=0, column=0, sticky="w")
+        ttk.Label(controls, text="Search method").grid(
+            row=0, column=0, sticky="w"
+        )
+        self.search_method_var = tk.StringVar(value="Brute Force")
+        self.search_method_combo = ttk.Combobox(
+            controls,
+            textvariable=self.search_method_var,
+            values=("Brute Force", "KNN (cKDTree)", "RNN (cKDTree)"),
+            state="readonly",
+            width=18,
+        )
+        self.search_method_combo.grid(
+            row=1, column=0, sticky="ew", pady=(3, 8)
+        )
+        self.search_method_combo.bind(
+            "<<ComboboxSelected>>", self._search_method_changed
+        )
+        self.search_parameter_label = ttk.Label(controls, text="Top K")
+        self.search_parameter_label.grid(row=2, column=0, sticky="w")
         self.top_k_var = tk.StringVar(value=str(top_k))
-        ttk.Spinbox(
+        self.top_k_input = ttk.Spinbox(
             controls,
             from_=1,
             to=1000000,
             textvariable=self.top_k_var,
             width=8,
-        ).grid(row=1, column=0, sticky="ew", pady=(3, 8))
+        )
+        self.top_k_input.grid(row=3, column=0, sticky="ew", pady=(3, 8))
+        self.radius_var = tk.StringVar()
+        self.radius_input = ttk.Entry(
+            controls, textvariable=self.radius_var, width=12
+        )
+        self.radius_input.grid(row=3, column=0, sticky="ew", pady=(3, 8))
+        self.radius_input.grid_remove()
         self.search_button = ttk.Button(
             controls, text="Find nearest meshes", command=self._start_search
         )
-        self.search_button.grid(row=2, column=0, sticky="ew")
+        self.search_button.grid(row=4, column=0, sticky="ew")
 
         self.status_var = tk.StringVar(
             value="Select a database mesh or browse for an OBJ file."
@@ -215,6 +242,18 @@ class QueryWindow:
         self.root.bind_all("<Button-5>", self._on_mousewheel, add="+")
         self.root.after(120, lambda: self.main_pane.sashpos(0, 410))
 
+    def _search_method_changed(self, _event=None):
+        radius_mode = self.search_method_var.get().startswith("RNN")
+        self.search_parameter_label.configure(
+            text="Radius (combined score)" if radius_mode else "Top K"
+        )
+        if radius_mode:
+            self.top_k_input.grid_remove()
+            self.radius_input.grid()
+        else:
+            self.radius_input.grid_remove()
+            self.top_k_input.grid()
+
     def _category_changed(self, _event=None):
         category = self.category_var.get()
         filenames = [
@@ -261,9 +300,24 @@ class QueryWindow:
             query_path = self._selected_mesh_path()
             if query_path is None:
                 raise ValueError("Select a mesh before starting the search.")
-            top_k = int(self.top_k_var.get())
-            if top_k < 1:
-                raise ValueError("Top K must be at least one.")
+            selected_method = self.search_method_var.get()
+            search_method = {
+                "Brute Force": "brute_force",
+                "KNN (cKDTree)": "knn",
+                "RNN (cKDTree)": "rnn",
+            }[selected_method]
+            radius = None
+            top_k = 5
+            if search_method == "rnn":
+                radius = float(self.radius_var.get())
+                if not np.isfinite(radius) or radius < 0:
+                    raise ValueError(
+                        "Radius must be a finite non-negative number."
+                    )
+            else:
+                top_k = int(self.top_k_var.get())
+                if top_k < 1:
+                    raise ValueError("Top K must be at least one.")
         except (ValueError, FileNotFoundError) as error:
             self.messagebox.showerror(
                 "Invalid query", str(error), parent=self.root
@@ -284,6 +338,9 @@ class QueryWindow:
                     source_path=self.source_path,
                     top_k=top_k,
                     seed=self.seed,
+                    search_method=search_method,
+                    radius=radius,
+                    search_index=self.search_index,
                 )
             except Exception as error:
                 self.result_queue.put((False, error))
@@ -330,10 +387,24 @@ class QueryWindow:
 
     def _show_results(self, quality, matches):
         self._clear_results()
-        self.status_var.set(
-            f"Showing {len(matches)} of {quality['Candidates_ranked']:,} "
-            "ranked candidates (lower distance is better)."
+        method_label = {
+            "brute_force": "Brute force",
+            "knn": "KNN (cKDTree)",
+            "rnn": "RNN (cKDTree)",
+        }[quality["Search_method_used"]]
+        status = (
+            f"{method_label}: showing {len(matches)} of "
+            f"{quality['Candidates_ranked']:,} candidates "
+            "(lower distance is better)."
         )
+        if quality["Search_fallback_reason"]:
+            status += (
+                " Exact brute-force fallback: "
+                f"{quality['Search_fallback_reason']}."
+            )
+        if quality["Search_method_used"] == "rnn":
+            status += f" Radius: {quality['RNN_radius']:.8g}."
+        self.status_var.set(status)
         if not matches:
             self.ttk.Label(
                 self.results_inner, text="No matching candidates were returned."
@@ -764,6 +835,7 @@ def launch_query_ui(
     features_path,
     top_k=5,
     seed=None,
+    search_index=None,
 ):
     """Open the query picker and interactive ranked-results window."""
     app = QueryWindow(
@@ -774,5 +846,6 @@ def launch_query_ui(
         features_path,
         top_k=top_k,
         seed=seed,
+        search_index=search_index,
     )
     app.run()
