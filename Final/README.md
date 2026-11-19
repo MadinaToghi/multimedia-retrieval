@@ -1,245 +1,84 @@
-# MMR Mesh Retrieval Pipeline
+# CBSR Mesh Retrieval
 
-This project preprocesses OBJ meshes, extracts shape descriptors, and ranks
-database meshes against a single query. Processing functions live beside the
-pipeline stage they implement so the order is visible and reviewable:
-
-- `preprocess.py`: repair, resample, align, normalize, and export meshes.
-- `elementary_descriptors.py`: raw scalar descriptors and database scaler.
-- `histogram_descriptors.py`: A3/D1-D4 histograms and shared bin edges.
-- `curvature_descriptors.py`: fixed-radius curvature histograms and quality.
-- `query.py`: preprocess a query, calculate its features, rank candidates, and
-  display the top matches.
-- `MMR_utility.py`: small helpers shared between stages, such as mesh loading,
-  stable seeds, and configuration-file I/O.
-
-## Requirements
-
-The tested environment uses Python 3.12. From the repository root:
+This project builds a content-based 3D shape retrieval (CBSR) pipeline. The main
+application is the query interface:
 
 ```bash
-conda create -n MMR python=3.12
-conda activate MMR
-python -m pip install -r Final/requirements.txt
+python Final/4_matching_and_scalability/query.py
 ```
 
-The query window uses Tkinter and Matplotlib's Tk backend. Both are available
-in standard desktop Python/Conda installations; on some Linux distributions,
-Tkinter must be installed as an OS package. A graphical desktop session is
-required, so the UI will not open on a headless server.
+It processes a query mesh, calculates its descriptors, and retrieves similar
+database meshes. Select Brute Force, KNN, or RNN in the interface.
 
-## Add the Database
+## Database Requirement
 
-Place the large source database locally at:
+The source shape database is required to run the pipeline. It must be available
+at:
 
 ```text
 Final/shapes/ShapeDatabase_INFOMR/<Category>/<mesh>.obj
 ```
 
-Keep the category folders and OBJ filenames intact. The source and processed
-shape databases are excluded by `.gitignore`; they are not uploaded to GitHub.
-Feature tables and their settings can be committed separately. Each collaborator
-must supply their own local database copy. The `shapes/` folder is kept in Git
-with a placeholder file so the expected location exists after clone.
+`ShapeDatabase_INFOMR` is excluded by `.gitignore`, so it is not included when
+the project is cloned from GitHub. The processed
+`ShapeDatabase_INFOMR_cleaned` database is also excluded and is not pushed to
+Git. Obtain the source database and place it at the path above before running
+the pipeline. Keep its category folders and OBJ filenames intact.
 
-## Run a Sample
+Precomputed feature tables and configuration files are already provided under
+`Final/features/` and are used by the query application.
 
-Run all commands from the repository root. Preprocessing selects 10 meshes per
-category by default (the current database yields 690 meshes):
+## Setup
 
-```bash
-python Final/preprocess.py
-python Final/elementary_descriptors.py
-python Final/histogram_descriptors.py
-python Final/curvature_descriptors.py
-```
-
-Sample meshes go to `Final/shapes/ShapeDatabase_INFOMR_cleaned_sample`; sample
-features and scaler/bin settings go to `Final/features/sample`. Outputs are not
-overwritten unless a feature script receives `--overwrite`. Preprocessing can
-resume completed work with `--resume`.
-
-## Presentation Demos
-
-With the source database in place, run these scripts in order:
+Run commands from the repository root. Install the dependencies listed in
+`Final/requirements.txt` before running any pipeline stage:
 
 ```bash
-python Final/demo/demo1.py
-python Final/demo/demo2.py
-python Final/demo/demo3.py
-python Final/demo/demo4.py
+python -m pip install -r Final/requirements.txt
 ```
 
-Demo 1 repairs each mesh before refining or decimating it, matching the
-preprocessing pipeline, and writes the results to `Final/demo/demo_output/1_remeshed`.
-Demo 2 reads those meshes, applies the pipeline's normalization steps, and
-writes `Final/demo/demo_output/2_normalized`. Demos 3 and 4 both read demo 2's output;
-demo 3 compares global and shape descriptors, while demo 4 compares curvature.
-Rerun demos 1 and 2 after changing the selections in `demo/demo_common.py`. The
-first three selections appear in demo 3, and the last three appear in demo 4.
+The query interface requires Tkinter and a graphical desktop session. Tkinter
+is included with many Python distributions; some Linux installations require
+installing it separately through the operating system package manager.
 
-The default examples span six categories. The three simplified meshes have
-approximately 18,900, 17,300, and 37,400 vertices after repair, respectively,
-before they are reduced to the 5,000-10,000 vertex target range.
+## Pipeline Stages
 
-## Run the Full Database
+1. **Read data** — `1_read_data/` contains shared mesh utilities and
+   `explore.py`, which summarizes the source database.
+2. **Preprocess** — `2_preprocess/preprocess.py` repairs, resamples, aligns,
+   and normalizes source meshes, saving processed meshes under `shapes/`.
+3. **Feature extraction** — `3_feature_extraction/` calculates scalar
+   descriptors, A3/D1-D4 histograms, and curvature histograms. Feature tables
+   and their configuration are saved under `features/`.
+4. **Matching and scalability** — `4_matching_and_scalability/query.py` is
+   the main CBSR application. It processes a query and ranks database meshes.
+   The interface offers brute-force, K-nearest-neighbor (KNN), and
+   range-neighbor (RNN) search. The folder also contains t-SNE visualization
+   and search-index code.
+5. **Evaluation** — `5_evaluation/` evaluates retrieval quality and compares
+   KNN search performance with brute force.
 
-After reviewing the sample logs and outputs:
+The `shapes/` and `features/` folders stay at the `Final/` level and are shared
+by the pipeline stages.
+
+## Prepare the Database
+
+After adding `ShapeDatabase_INFOMR`, preprocess the full database to create the
+cleaned database required by the query application:
 
 ```bash
-python Final/preprocess.py --full
-python Final/elementary_descriptors.py --database Final/shapes/ShapeDatabase_INFOMR_cleaned --features Final/features
-python Final/histogram_descriptors.py --database Final/shapes/ShapeDatabase_INFOMR_cleaned --features Final/features
-python Final/curvature_descriptors.py --database Final/shapes/ShapeDatabase_INFOMR_cleaned --features Final/features
+python Final/2_preprocess/preprocess.py --full
 ```
 
-The full processed database is written to
-`Final/shapes/ShapeDatabase_INFOMR_cleaned`; full feature tables and their
-configuration are written to `Final/features/`. The sample and full outputs are
-separate so scalers, histogram bins, or feature rows cannot be mixed.
-
-## Explore Database Statistics
-
-Run exploratory statistics on every OBJ in the full source database:
+The precomputed features in `Final/features/` do not need to be extracted
+again. To regenerate them, run:
 
 ```bash
-python Final/explore.py
+python Final/3_feature_extraction/elementary_descriptors.py --database Final/shapes/ShapeDatabase_INFOMR_cleaned --features Final/features
+python Final/3_feature_extraction/histogram_descriptors.py --database Final/shapes/ShapeDatabase_INFOMR_cleaned --features Final/features
+python Final/3_feature_extraction/curvature_descriptors.py --database Final/shapes/ShapeDatabase_INFOMR_cleaned --features Final/features
 ```
 
-By default, CSV summaries and statistics plots are written to
-`Final/exploration/results/`; use `--show` to open the plots after they are
-saved. To analyze a reproducible stratified sample instead, pass
-`--sample-per-category 10`. The script reports mesh vertex/face counts, OBJ
-face types, bounding boxes, per-class counts, and representative meshes.
-Failed mesh loads are recorded in the statistics CSV and a separate error CSV.
-
-## Query a Mesh
-
-Run `query.py` from the editor or repository root to open the interactive query
-window. Choose a mesh by category and filename from the original database, or
-browse to an OBJ file anywhere on your computer. Choose **Brute Force**, **KNN
-(cKDTree)**, or **RNN (cKDTree)**. Brute Force and KNN use the Top K field; RNN
-uses a radius in the same weighted feature-score units displayed for each
-result and returns every candidate within that radius. Click **Find nearest
-meshes** to search. The preprocessed query and ranked result previews appear in
-the window. Result thumbnails are lightweight for smooth scrolling; use
-**Interactive 3D view** on a result to rotate it. Open **Feature values and
-distances** to inspect descriptor values, per-feature distances, weights, and
-weighted contributions. The **Query feature values** button opens the query's
-descriptors. Histogram rows in both windows can be expanded to inspect their
-individual bins.
-
-The GUI loads the full cleaned database and feature tables and builds its
-in-memory cKDTree once when it starts. KNN and RNN use a Manhattan-distance
-embedding whose histogram components exactly reproduce the query pipeline's
-Wasserstein distances. Brute Force remains available as the reference search.
-If a query has unavailable features that prevent exact indexed search, the
-requested KNN or RNN search falls back to exact brute-force scoring and reports
-the reason in the status line.
-
-A one-off command-line query is also available:
-
-```bash
-python Final/query.py --cli --mesh Final/shapes/ShapeDatabase_INFOMR/<Category>/<mesh>.obj
-```
-
-Use `--search-method knn --top-k 5` for KNN, or
-`--search-method rnn --radius <score-radius>` for RNN. Brute Force is the
-default. For example:
-
-```bash
-python Final/query.py --cli --mesh <query.obj> --search-method knn --top-k 5 --no-plot
-python Final/query.py --cli --mesh <query.obj> --search-method rnn --radius 3.0 --no-plot
-```
-
-Supplying `--mesh` without `--cli` also selects command-line mode. Use
-`--no-plot` to print the ranked matches without opening the legacy Matplotlib
-results plot. That plot shows at most the first five matches; the CLI output
-still lists every RNN match.
-
-By default, queries search the full processed database at
-`Final/shapes/ShapeDatabase_INFOMR_cleaned` and use its matching feature tables
-and configuration in `Final/features/`.
-
-To query only the sample database, explicitly select its matching data and
-features:
-
-```bash
-python Final/query.py --mesh <path-to-query.obj> --database Final/shapes/ShapeDatabase_INFOMR_cleaned_sample --features Final/features/sample
-```
-
-Query preprocessing calls the same function and uses the same feature settings
-as database preprocessing. The default Top K is five. If the query path is
-inside the source database and that same category/file is in the candidate
-database, it is excluded from the results to avoid returning the query as its
-own nearest match.
-
-## Visualize Feature Similarity
-
-Run the current-feature t-SNE visualization from the repository root:
-
-```bash
-python Final/t-SNE.py
-```
-
-It uses the same weighted feature representation as retrieval, including
-normalized D1-D4, A3, and curvature histograms, and colors meshes by class.
-The interactive plot shows the class and filename when hovering over a point.
-Coordinates and a PNG are saved to `Final/visualizations/`. Use `--no-show` to
-save the outputs without opening a plot window.
-
-## Evaluate Search Performance
-
-Run the sampled brute-force versus exact cKDTree KNN benchmark:
-
-```bash
-python Final/evaluation/step5_performance.py
-```
-
-By default it samples 25 saved meshes as queries and tests K values from 1 to
-30. It verifies that KNN matches brute-force rankings and writes timing data
-and a plot under `Final/evaluation/results/`. Set `--queries`, `--max-k`, or
-`--repeats` to change the benchmark size. It reports per-query search timings
-and one-time index construction separately; neither includes preprocessing a
-new query mesh.
-
-## Evaluate Retrieval Quality
-
-The evaluation scripts use the current feature tables and weighted score,
-including the curvature histogram; they do not depend on the legacy Step 5
-result CSVs. A mesh is considered relevant to a query when both have the same
-class. The query mesh itself is excluded, and meshes without usable curvature
-are excluded as they are during retrieval.
-
-Run top-K precision, recall, and F1 evaluation:
-
-```bash
-python Final/evaluation/evaluation.py --top-k 6
-```
-
-Run full-gallery ROC and precision-recall evaluation:
-
-```bash
-python Final/evaluation/ROC_curve.py
-```
-
-Both scripts save their CSV and plot outputs to
-`Final/evaluation/results/`. ROC and precision-recall evaluate the full
-ranked candidate gallery, not an RNN radius-truncated list. KNN and RNN use
-the same score, so their full-gallery ranking metrics are the same; the
-selected K or radius controls which results are returned, not their order.
-
-## Feature Notes
-
-Elementary CSV values are raw measurements. `elementary_scaler.csv` stores the
-database mean and standard deviation used in distance comparisons. Validity
-flags are diagnostic only: finite volume-derived values are still used even
-when a mesh is open or a ratio exceeds one. A3/D1-D4 and curvature histograms
-store normalized bin proportions. `histogram_bins.csv` records the shared
-A3/D1-D4 bin locations, and `feature_config.json` records sampling seeds and
-curvature settings.
-
-Meshes are retained when a feature is unavailable. Curvature rows record
-reliable-area and fit-success fractions; meshes without a usable curvature
-histogram remain in the database but are excluded from retrieval ranking so
-every ranked candidate is compared using Curvature.
+The query application uses the processed meshes in
+`Final/shapes/ShapeDatabase_INFOMR_cleaned` and matching feature files in
+`Final/features/` by default.

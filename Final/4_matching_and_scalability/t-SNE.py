@@ -1,6 +1,7 @@
 """Visualize current weighted mesh features with an interactive t-SNE plot."""
 
 import argparse
+import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -9,11 +10,12 @@ import pandas as pd
 from matplotlib.lines import Line2D
 from sklearn.manifold import TSNE
 
+PROJECT_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(PROJECT_DIR / "3_feature_extraction"))
+
 from query import DESCRIPTOR_WEIGHTS
 from scalability import FeatureSearchIndex
-
-
-PROJECT_DIR = Path(__file__).resolve().parent
 
 
 def create_embedding(
@@ -169,7 +171,7 @@ def main():
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=PROJECT_DIR / "visualizations",
+        default=Path(__file__).resolve().parent / "visualizations",
     )
     parser.add_argument("--perplexity", type=float, default=30.0)
     parser.add_argument("--max-iter", type=int, default=1000)

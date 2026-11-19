@@ -1,6 +1,7 @@
 """Estimate fixed-radius curvature histograms and record per-mesh quality."""
 
 import argparse
+import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -9,6 +10,9 @@ import pandas as pd
 from matplotlib.backends.backend_pdf import PdfPages
 from scipy.spatial import cKDTree
 from tqdm import tqdm
+
+PROJECT_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_DIR / "1_read_data"))
 
 import MMR_utility as mmru
 
@@ -32,9 +36,6 @@ CURVATURE_BIN_CENTERS = (
 CURVATURE_COLUMNS = [
     f"Curvature_bin_{index}" for index in range(CURVATURE_BIN_COUNT)
 ]
-PROJECT_DIR = Path(__file__).resolve().parent
-
-
 # Area sampling and local quadratic curvature fitting
 
 def _sample_surface(triangles, areas, count, rng):

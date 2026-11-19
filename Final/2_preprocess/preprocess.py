@@ -1,6 +1,7 @@
 """Repair, resample, align, and normalize source meshes into an OBJ database."""
 
 import argparse
+import sys
 import tempfile
 from pathlib import Path
 
@@ -9,15 +10,15 @@ import pandas as pd
 import trimesh as tr
 from tqdm import tqdm
 
+PROJECT_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_DIR / "1_read_data"))
+
 import MMR_utility as mmru
 
 
 MIN_VERTICES = 5000
 MAX_VERTICES = 10000
 MAX_RESAMPLING_ITERATIONS = 15
-PROJECT_DIR = Path(__file__).resolve().parent
-
-
 # Mesh orientation, alignment, and scale normalization
 
 def _orientation_sign(values):

@@ -1,11 +1,16 @@
 """Load feature tables and search candidates with the query.py distance policy."""
 
+import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from scipy.spatial import cKDTree
 from scipy.stats import wasserstein_distance
+
+FINAL_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(FINAL_DIR / "1_read_data"))
+sys.path.insert(0, str(FINAL_DIR / "3_feature_extraction"))
 
 from curvature_descriptors import (
     CURVATURE_BIN_CENTERS,

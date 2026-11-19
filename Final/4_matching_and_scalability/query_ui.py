@@ -3,11 +3,15 @@
 import base64
 import io
 import queue
+import sys
 import threading
 from collections import OrderedDict
 from pathlib import Path
 
 import numpy as np
+
+FINAL_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(FINAL_DIR / "1_read_data"))
 
 import MMR_utility as mmru
 

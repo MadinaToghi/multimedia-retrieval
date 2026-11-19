@@ -10,8 +10,12 @@ from scipy.spatial.distance import cdist
 EVALUATION_DIR = Path(__file__).resolve().parent
 FINAL_DIR = EVALUATION_DIR.parent
 PROJECT_DIR = FINAL_DIR.parent
-if str(FINAL_DIR) not in sys.path:
-    sys.path.insert(0, str(FINAL_DIR))
+for dependency_dir in (
+    FINAL_DIR / "4_matching_and_scalability",
+    FINAL_DIR / "3_feature_extraction",
+):
+    if str(dependency_dir) not in sys.path:
+        sys.path.insert(0, str(dependency_dir))
 
 from query import DESCRIPTOR_WEIGHTS
 from scalability import FeatureSearchIndex

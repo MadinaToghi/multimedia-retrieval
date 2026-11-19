@@ -2,18 +2,21 @@
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+PROJECT_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 import MMR_utility as mmru
 
 
-PROJECT_DIR = Path(__file__).resolve().parent
 DEFAULT_SOURCE = PROJECT_DIR / "shapes" / "ShapeDatabase_INFOMR"
-DEFAULT_OUTPUT = PROJECT_DIR / "exploration" / "results"
+DEFAULT_OUTPUT = Path(__file__).resolve().parent / "results"
 
 
 def read_obj_face_info(obj_path):

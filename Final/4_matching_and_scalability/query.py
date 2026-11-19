@@ -1,10 +1,20 @@
 """Preprocess one OBJ, rank saved features, and browse the closest matches."""
 
 import argparse
+import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+PROJECT_DIR = Path(__file__).resolve().parents[1]
+for dependency_folder in (
+    "1_read_data",
+    "2_preprocess",
+    "3_feature_extraction",
+    "4_matching_and_scalability",
+):
+    sys.path.insert(0, str(PROJECT_DIR / dependency_folder))
 
 import MMR_utility as mmru
 from curvature_descriptors import (
@@ -40,9 +50,6 @@ DESCRIPTOR_WEIGHTS = {
     "A3": 0.6,
     "Curvature": 1.0,
 }
-PROJECT_DIR = Path(__file__).resolve().parent
-
-
 def query_database(query_path, database_path, features_path, source_path=None,
                    top_k=5, seed=None, search_method="brute_force",
                    radius=None, search_index=None):

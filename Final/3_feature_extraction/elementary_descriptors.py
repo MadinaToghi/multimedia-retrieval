@@ -1,11 +1,15 @@
 """Calculate raw elementary descriptors and database z-score statistics."""
 
 import argparse
+import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+
+PROJECT_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_DIR / "1_read_data"))
 
 import MMR_utility as mmru
 
@@ -23,9 +27,6 @@ ELEMENTARY_VALIDITY_COLUMNS = {
     "Convexity": "Convexity_Valid",
     "Eccentricity": "Eccentricity_Valid",
 }
-PROJECT_DIR = Path(__file__).resolve().parent
-
-
 # Per-mesh feature calculations
 
 def elementary_descriptors(mesh):

@@ -1,11 +1,15 @@
 """Extract normalized A3 and D1-D4 histograms with shared database bins."""
 
 import argparse
+import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+
+PROJECT_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_DIR / "1_read_data"))
 
 import MMR_utility as mmru
 
@@ -13,9 +17,6 @@ import MMR_utility as mmru
 HISTOGRAM_SAMPLE_COUNT = 10000
 HISTOGRAM_BIN_COUNT = 25
 HISTOGRAM_DESCRIPTORS = ["D1", "D2", "D3", "D4", "A3"]
-PROJECT_DIR = Path(__file__).resolve().parent
-
-
 # Per-mesh sampling and histogram construction
 
 def _distinct_vertex_indices(rng, sample_count, vertices_count, arity):
