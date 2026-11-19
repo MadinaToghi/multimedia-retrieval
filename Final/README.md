@@ -98,6 +98,21 @@ The full processed database is written to
 configuration are written to `Final/features/`. The sample and full outputs are
 separate so scalers, histogram bins, or feature rows cannot be mixed.
 
+## Explore Database Statistics
+
+Run exploratory statistics on every OBJ in the full source database:
+
+```bash
+python Final/explore.py
+```
+
+By default, CSV summaries and statistics plots are written to
+`Final/exploration/results/`; use `--show` to open the plots after they are
+saved. To analyze a reproducible stratified sample instead, pass
+`--sample-per-category 10`. The script reports mesh vertex/face counts, OBJ
+face types, bounding boxes, per-class counts, and representative meshes.
+Failed mesh loads are recorded in the statistics CSV and a separate error CSV.
+
 ## Query a Mesh
 
 Run `query.py` from the editor or repository root to open the interactive query
@@ -187,6 +202,32 @@ and a plot under `Final/evaluation/results/`. Set `--queries`, `--max-k`, or
 `--repeats` to change the benchmark size. It reports per-query search timings
 and one-time index construction separately; neither includes preprocessing a
 new query mesh.
+
+## Evaluate Retrieval Quality
+
+The evaluation scripts use the current feature tables and weighted score,
+including the curvature histogram; they do not depend on the legacy Step 5
+result CSVs. A mesh is considered relevant to a query when both have the same
+class. The query mesh itself is excluded, and meshes without usable curvature
+are excluded as they are during retrieval.
+
+Run top-K precision, recall, and F1 evaluation:
+
+```bash
+python Final/evaluation/evaluation.py --top-k 6
+```
+
+Run full-gallery ROC and precision-recall evaluation:
+
+```bash
+python Final/evaluation/ROC_curve.py
+```
+
+Both scripts save their CSV and plot outputs to
+`Final/evaluation/results/`. ROC and precision-recall evaluate the full
+ranked candidate gallery, not an RNN radius-truncated list. KNN and RNN use
+the same score, so their full-gallery ranking metrics are the same; the
+selected K or radius controls which results are returned, not their order.
 
 ## Feature Notes
 
